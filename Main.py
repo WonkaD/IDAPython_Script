@@ -38,7 +38,6 @@ class Disassembled:
         self.possition = possition
         self.instruction = instruction
 
-        
     def __str__(self):
         return transformPossition(self.possition) + " : " + self.instruction 
 
@@ -77,8 +76,11 @@ class Loop:
         self.function = function_
         self.loopInstructions = loopInstructions
 
-    # def addLoopInstruction(self, loopInstruction):
-    #     self.loopInstructions.append(loopInstruction)
+    def __str__(self):
+        res ="Function: " + self.function.name + "(" + transformPossition(self.function.start) + ", " + transformPossition(self.function.end) + ")\n"
+        for loopInstruction in self.loopInstructions:
+            res += "\t[Verified: " + str(loopInstruction.verified) + "] " + str(loopInstruction.instruction) + "\n"
+        return res + "\n"
 
 # -------------------------------------- CODE --------------------------------------
 
@@ -93,13 +95,24 @@ def getListOfFunctions():
     return res
 
 
+def checkJmpDestination(instructions, jmpInstruction):
+    if jmpInstruction.OperandValue(0) >= jmpInstruction.possition:
+        return False
+    else:
+        for instruction in instructions:
+            if instruction.possition == jmpInstruction.OperandValue(0):
+                return True
+        return False
+    pass
+
+
 def getListOfPossibleLoops(functions):
     loopFunctions = []
     for function in functions:
         loopInstructions = []
         for instruction in function.disassembled:
             mnemonicName = instruction.Instruction()
-            if mnemonicName.startWith("j") and instruction.OperandValue(0) < instruction.possition:
+            if mnemonicName.startswith("j") and checkJmpDestination(function.disassembled, instruction):
                 loopInstructions.append(Loop.LoopInstruction(instruction))
                 # print "Salto hacia arriba", function.name, str(instruction)
             elif "loop" in mnemonicName:
@@ -110,7 +123,7 @@ def getListOfPossibleLoops(functions):
                 # print "Operacion recursiva", function.name, str(instruction)
         if len(loopInstructions) != 0:
             loopFunctions.append(Loop(function, loopInstructions))
-    return loopInstructions
+    return loopFunctions
 
 
 # -------------------------------------- UTILS --------------------------------------
@@ -142,9 +155,13 @@ def search(list, filter):
 
 
 def main():
-    functions = getListOfFunctions()
-    possibleLoops = getListOfPossibleLoops(functions)
-
+    count = 0
+    print "------------------------------------ START ------------------------------------"
+    for possibleLoop in getListOfPossibleLoops(getListOfFunctions()):
+        count += len(possibleLoop.loopInstructions)
+        print possibleLoop
+    print "Possible loops: " + str(count)
+    print "------------------------------------  END  ------------------------------------"
 
 
 if __name__ == "__main__":
