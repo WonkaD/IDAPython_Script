@@ -7,7 +7,9 @@ import binascii
 # -------------------------------------- GLOBAL --------------------------------------
 
 
-ASM_JMP_INSTRUCTIONS = ["JMP", "JA", "JNBE", "JAE", "JB", "JNAE", "JBE", "JNA", "JE", "JZ", "JNE", "JNZ", "JG", "JNLE", "JGE", "JNL", "JL", "JNGE", "JLE", "JNG", "JC", "JNC", "JNO", "JNP", "JPO", "JNS", "JO", "JP", "JPE", "JS", "LOOP", ]
+ASM_JMP_INSTRUCTIONS = ["JMP", "JA", "JNBE", "JAE", "JB", "JNAE", "JBE", "JNA", "JE", "JZ", "JNE", "JNZ", "JG", "JNLE",
+                        "JGE", "JNL", "JL", "JNGE", "JLE", "JNG", "JC", "JNC", "JNO", "JNP", "JPO", "JNS", "JO", "JP",
+                        "JPE", "JS", "LOOP", ]
 
 
 # -------------------------------------- CLASSES --------------------------------------
@@ -19,11 +21,11 @@ class Function:
         self.start = start
         self.end = end
         self.disassembled = self.disassembleFunction()
-    
+
     def __str__(self):
         res = self.name + " (" + transformPossition(self.start) + ", " + transformPossition(self.end) + ")\n"
         for disassembledInstruction in self.disassembled:
-            res += str(disassembledInstruction) + " : "+ bytesToHex(disassembledInstruction.getOpCode()) +"\n"
+            res += str(disassembledInstruction) + " : " + bytesToHex(disassembledInstruction.getOpCode()) + "\n"
         return res
 
     def disassembleFunction(self):
@@ -39,7 +41,7 @@ class Disassembled:
         self.instruction = instruction
 
     def __str__(self):
-        return transformPossition(self.possition) + " : " + self.instruction 
+        return transformPossition(self.possition) + " : " + self.instruction
 
     def OpCode(self):
         return GetManyBytes(self.possition, ItemSize(self.possition))
@@ -77,10 +79,12 @@ class Loop:
         self.loopInstructions = loopInstructions
 
     def __str__(self):
-        res ="Function: " + self.function.name + "(" + transformPossition(self.function.start) + ", " + transformPossition(self.function.end) + ")\n"
+        res = "Function: " + self.function.name + "(" + transformPossition(
+            self.function.start) + ", " + transformPossition(self.function.end) + ")\n"
         for loopInstruction in self.loopInstructions:
             res += "\t[Verified: " + str(loopInstruction.verified) + "] " + str(loopInstruction.instruction) + "\n"
         return res + "\n"
+
 
 # -------------------------------------- CODE --------------------------------------
 
@@ -130,11 +134,27 @@ def getListOfPossibleLoops(functions):
 
 
 def transformPossition(possition):
-    return "0x%08x"%(possition)
+    return "0x%08x" % (possition)
 
 
 def bytesToHex(bytes):
     return binascii.hexlify(bytearray(bytes))
+
+
+def printLoops(loops):
+    verified = 0
+    notVerified = 0
+    print "------------------------------------ START ------------------------------------"
+    for possibleLoop in loops:
+        for loopInstruction in possibleLoop.loopInstructions:
+            if loopInstruction.verified:
+                verified += 1
+            else:
+                notVerified += 1
+        print possibleLoop
+    print "Not verified loops: " + str(notVerified)
+    print "Verified loops: " + str(verified)
+    print "------------------------------------  END  ------------------------------------"
 
 
 def printFunction(functionName, functions):
@@ -151,17 +171,13 @@ def search(list, filter):
         if filter(x):
             return x
     return None
+
+
 # -------------------------------------- MAIN --------------------------------------
 
 
 def main():
-    count = 0
-    print "------------------------------------ START ------------------------------------"
-    for possibleLoop in getListOfPossibleLoops(getListOfFunctions()):
-        count += len(possibleLoop.loopInstructions)
-        print possibleLoop
-    print "Possible loops: " + str(count)
-    print "------------------------------------  END  ------------------------------------"
+    printLoops(getListOfPossibleLoops(getListOfFunctions()))
 
 
 if __name__ == "__main__":
