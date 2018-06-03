@@ -193,6 +193,7 @@ def contains(loopInstructions, jumpDst):
 # -------------------------------------- MAIN --------------------------------------
 
 def advancedCheckLoop(start, end, stack):
+    res = set()
     ea = start
     while ea != idaapi.BADADDR:
         if ea == end:
@@ -200,17 +201,19 @@ def advancedCheckLoop(start, end, stack):
         elif GetMnem(ea).startswith("j"):
             jumpDst = GetOperandValue(ea, 0)
             if ea in stack:
-                print transformPossition(start), transformPossition(ea)
+                if GetOperandValue(ea, 0) == start:
+                    res.add(str(start) + "," + str(ea))
                 break
             else:
                 if GetMnem(ea) == "jmp":
-                    return advancedCheckLoop(jumpDst, end, cpArray(stack, ea))
+                    res.update(advancedCheckLoop(jumpDst, end, cpArray(stack, ea)))
+                    return res
                 else:
-                    advancedCheckLoop(jumpDst, end, cpArray(stack, ea))
+                    res.update(advancedCheckLoop(jumpDst, end, cpArray(stack, ea)))
         elif GetMnem(ea) == "retn":
             break
         ea = NextHead(ea, idaapi.cvar.inf.maxEA)
-    return
+    return res
 
 
 def cpArray(lista, item_):
@@ -251,12 +254,18 @@ def checkLoop(start, end, loop):
 
 def main():
     loops = getListOfPossibleLoops(getListOfFunctions())
+    count = 0
     for loop in loops:
         Function_start = loop.function.start
         Function_end = loop.function.end
         print loop.function.name, Function_start,transformPossition(Function_start), Function_end, transformPossition(Function_end)
-        print str(advancedCheckLoop(loop.function.start, loop.function.end, []))
+        for a in advancedCheckLoop(loop.function.start, loop.function.end, []):
+            count += 1
+            b = a.split(",")
+            print "Bucle: ", transformPossition(int(b[0])), transformPossition(int(b[1]))
+        # print str(advancedCheckLoop(loop.function.start, loop.function.end, []))
         print "-------------------------------------------------------"
+    print "Total: ", count
 
     # print"-------------------------------- STRAT --------------------------------"
     # loops = getListOfPossibleLoops(getListOfFunctions())
