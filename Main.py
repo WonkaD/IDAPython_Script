@@ -193,7 +193,7 @@ def contains(loopInstructions, jumpDst):
 
 # -------------------------------------- MAIN --------------------------------------
 
-def advancedCheckLoop(start, end, stack):
+def getSetOfLoops(start, end, stack=[]):
     res = set()
     ea = start
     while ea != idaapi.BADADDR:
@@ -206,7 +206,7 @@ def advancedCheckLoop(start, end, stack):
                     res.add(str(start) + "," + str(ea))
                 break
             else:
-                res.update(advancedCheckLoop(jumpDst, end, cpArray(stack, ea)))
+                res.update(getSetOfLoops(jumpDst, end, cpArray(stack, ea)))
                 if GetMnem(ea) == "jmp":
                     return res
         elif GetMnem(ea) == "retn":
@@ -215,35 +215,62 @@ def advancedCheckLoop(start, end, stack):
     return res
 
 
-def cpArray(lista, item_):
+def getSetOfLoops_2(start, end, stack=[]):
+    res = set()
+    ea = start
+    stack2 = cpSet(stack, ea)
+    while ea != idaapi.BADADDR:
+        if ea == end:
+            break
+        elif GetMnem(ea).startswith("j"):
+            jumpDst = GetOperandValue(ea, 0)
+            if jumpDst in stack2:
+                # if GetOperandValue(ea, 0) == start:
+                res.add(str(jumpDst) + "," + str(ea))
+                break
+            else:
+                res.update(getSetOfLoops_2(jumpDst, end, stack2))
+                if GetMnem(ea) == "jmp":
+                    return res
+        elif GetMnem(ea) == "retn":
+            break
+        ea = NextHead(ea, idaapi.cvar.inf.maxEA)
+        stack2.add(ea)
+    return res
+
+
+def cpSet(list, item_=None):
+    res = set()
+    for item in list:
+        res.add(item)
+    if item_:
+        res.add(item_)
+    return res
+
+
+def cpArray(list, item_=None):
     res = []
-    for item in lista:
+    for item in list:
         res.append(item)
     if item_:
         res.append(item_)
     return res
 
 
-def checkLoop(start, end, loop):
-    # print "Start: " + transformPossition(start) + ", End: " + transformPossition(end)
+def checkLoop(start, end, stack=[]):
     ea = start
     while ea != idaapi.BADADDR:
         if ea == end:
             return True
         elif GetMnem(ea).startswith("j"):
             jumpDst = GetOperandValue(ea, 0)
-            if isJmpInTheFunction(loop.function, jumpDst):
-                value_ = contains(loop.loopInstructions, jumpDst)
-                if value_ == True:
-                    None
-                elif value_ == False:
-                    return None
-                else:
-                    if GetMnem(ea) == "jmp":
-                        return checkLoop(jumpDst, end, loop)
-                    else:
-                        if checkLoop(jumpDst, end, loop):
-                            return True
+            if ea in stack:
+                return False
+            elif GetMnem(ea) == "jmp":
+                return checkLoop(jumpDst, end, cpArray(stack, ea))
+            else:
+                if checkLoop(jumpDst, end, cpArray(stack, ea)):
+                    return True
         elif GetMnem(ea) == "retn":
             return False
         ea = NextHead(ea, idaapi.cvar.inf.maxEA)
@@ -257,28 +284,34 @@ def main():
     count = 0
     ts = time.time()
     for loop in loops:
+        if loop.function.name != "_main":
+             continue
         Function_start = loop.function.start
         Function_end = loop.function.end
-        check_loop = advancedCheckLoop(loop.function.start, loop.function.end, [])
+        check_loop = getSetOfLoops_2(loop.function.start, loop.function.end)
         if len(check_loop) == 0:
             continue
-        print loop.function.name, Function_start,transformPossition(Function_start), Function_end, transformPossition(Function_end)
+        print loop.function.name, Function_start, transformPossition(Function_start), Function_end, transformPossition(
+            Function_end)
         for a in check_loop:
             count += 1
             b = a.split(",")
             print "Bucle: ", transformPossition(int(b[0])), transformPossition(int(b[1]))
         print ""
     print "Total: ", count, "\t\tTime: ", str((time.time() - ts)), "seg."
-
-    print "--------------------------------------------------------------------"
-    ts = time.time()
-    for loop in loops:
-        for loopInstruction in loop.loopInstructions:
-            check = checkLoop(loopInstruction.loopStart(), loopInstruction.loopEnd(), loop)
-            if check == True:
-                loopInstruction.verify()
-    printLoops(loops)
-    print "Time: ", str((time.time() - ts)), "seg."
+    #
+    # print "--------------------------------------------------------------------"
+    # ts = time.time()
+    # for loop in loops:
+    #     if loop.function.name != "_main":
+    #         del loop
+    #         continue
+    #     for loopInstruction in loop.loopInstructions:
+    #         check = checkLoop(loopInstruction.loopStart(), loopInstruction.loopEnd())
+    #         if check == True:
+    #             loopInstruction.verify()
+    # printLoops(loops)
+    # print "Time: ", str((time.time() - ts)), "seg."
     print"-------------------------------- END --------------------------------"
 
 
