@@ -4,6 +4,7 @@
 import binascii
 import random
 import sys
+import time
 
 # -------------------------------------- GLOBAL --------------------------------------
 
@@ -205,11 +206,9 @@ def advancedCheckLoop(start, end, stack):
                     res.add(str(start) + "," + str(ea))
                 break
             else:
+                res.update(advancedCheckLoop(jumpDst, end, cpArray(stack, ea)))
                 if GetMnem(ea) == "jmp":
-                    res.update(advancedCheckLoop(jumpDst, end, cpArray(stack, ea)))
                     return res
-                else:
-                    res.update(advancedCheckLoop(jumpDst, end, cpArray(stack, ea)))
         elif GetMnem(ea) == "retn":
             break
         ea = NextHead(ea, idaapi.cvar.inf.maxEA)
@@ -226,7 +225,7 @@ def cpArray(lista, item_):
 
 
 def checkLoop(start, end, loop):
-    print "Start: " + transformPossition(start) + ", End: " + transformPossition(end)
+    # print "Start: " + transformPossition(start) + ", End: " + transformPossition(end)
     ea = start
     while ea != idaapi.BADADDR:
         if ea == end:
@@ -253,44 +252,34 @@ def checkLoop(start, end, loop):
 
 
 def main():
+    print"-------------------------------- START --------------------------------"
     loops = getListOfPossibleLoops(getListOfFunctions())
     count = 0
+    ts = time.time()
     for loop in loops:
         Function_start = loop.function.start
         Function_end = loop.function.end
+        check_loop = advancedCheckLoop(loop.function.start, loop.function.end, [])
+        if len(check_loop) == 0:
+            continue
         print loop.function.name, Function_start,transformPossition(Function_start), Function_end, transformPossition(Function_end)
-        for a in advancedCheckLoop(loop.function.start, loop.function.end, []):
+        for a in check_loop:
             count += 1
             b = a.split(",")
             print "Bucle: ", transformPossition(int(b[0])), transformPossition(int(b[1]))
-        # print str(advancedCheckLoop(loop.function.start, loop.function.end, []))
-        print "-------------------------------------------------------"
-    print "Total: ", count
+        print ""
+    print "Total: ", count, "\t\tTime: ", str((time.time() - ts)), "seg."
 
-    # print"-------------------------------- STRAT --------------------------------"
-    # loops = getListOfPossibleLoops(getListOfFunctions())
-    # for loop in loops:
-    #     print "--------------------------------------------------------------------"
-    #     while not loop.isVerified():
-    #         loopInstruction = random.choice(loop.loopInstructions)
-    #         if loopInstruction.verified:
-    #             continue
-    #         print str(loop)
-    #         print "LoopInstructions: " + str(len(loop.loopInstructions))
-    #         print "LoopInstruction to check: " + str(loopInstruction)
-    #         loop.loopInstructions.remove(loopInstruction)
-    #         check = checkLoop(loopInstruction.loopStart(), loopInstruction.loopEnd(), loop)
-    #         if check == True:
-    #             loopInstruction.verify()
-    #         elif check == False:
-    #             del loopInstruction
-    #             print "Is A Loop: " + str(check) + "\n"
-    #             continue
-    #         loop.loopInstructions.append(loopInstruction)
-    #         print "Is A Loop: " + str(check) + "\n"
-    #
-    # printLoops(loops)
-    # print"-------------------------------- END --------------------------------"
+    print "--------------------------------------------------------------------"
+    ts = time.time()
+    for loop in loops:
+        for loopInstruction in loop.loopInstructions:
+            check = checkLoop(loopInstruction.loopStart(), loopInstruction.loopEnd(), loop)
+            if check == True:
+                loopInstruction.verify()
+    printLoops(loops)
+    print "Time: ", str((time.time() - ts)), "seg."
+    print"-------------------------------- END --------------------------------"
 
 
 if __name__ == "__main__":
