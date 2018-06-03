@@ -95,6 +95,7 @@ class Loop:
                 return False
         return True
 
+
 # -------------------------------------- CODE --------------------------------------
 
 
@@ -165,7 +166,8 @@ def printLoops(loops):
                 verified += 1
             else:
                 notVerified += 1
-        print possibleLoop
+        if len(possibleLoop.loopInstructions) > 0:
+            print possibleLoop
     print "Not verified loops: " + str(notVerified)
     print "Verified loops: " + str(verified)
     print "------------------------------------  END  ------------------------------------"
@@ -190,16 +192,45 @@ def contains(loopInstructions, jumpDst):
 
 # -------------------------------------- MAIN --------------------------------------
 
+def advancedCheckLoop(start, end, stack):
+    ea = start
+    while ea != idaapi.BADADDR:
+        if ea == end:
+            break
+        elif GetMnem(ea).startswith("j"):
+            jumpDst = GetOperandValue(ea, 0)
+            if ea in stack:
+                print transformPossition(start), transformPossition(ea)
+                break
+            else:
+                if GetMnem(ea) == "jmp":
+                    return advancedCheckLoop(jumpDst, end, cpArray(stack, ea))
+                else:
+                    advancedCheckLoop(jumpDst, end, cpArray(stack, ea))
+        elif GetMnem(ea) == "retn":
+            break
+        ea = NextHead(ea, idaapi.cvar.inf.maxEA)
+    return
+
+
+def cpArray(lista, item_):
+    res = []
+    for item in lista:
+        res.append(item)
+    if item_:
+        res.append(item_)
+    return res
+
 
 def checkLoop(start, end, loop):
-    # print "Start: " + transformPossition(start) + ", End: " + transformPossition(end)
+    print "Start: " + transformPossition(start) + ", End: " + transformPossition(end)
     ea = start
     while ea != idaapi.BADADDR:
         if ea == end:
             return True
         elif GetMnem(ea).startswith("j"):
             jumpDst = GetOperandValue(ea, 0)
-            if isJmpInTheFunction(loop.function,jumpDst):
+            if isJmpInTheFunction(loop.function, jumpDst):
                 value_ = contains(loop.loopInstructions, jumpDst)
                 if value_ == True:
                     None
@@ -219,30 +250,39 @@ def checkLoop(start, end, loop):
 
 
 def main():
-    # print"-------------------------------- STRAT --------------------------------"
     loops = getListOfPossibleLoops(getListOfFunctions())
     for loop in loops:
-        print "--------------------------------------------------------------------"
-        while not loop.isVerified():
-            loopInstruction = random.choice(loop.loopInstructions)
-            if loopInstruction.verified:
-                continue
-            print str(loop)
-            print "LoopInstructions: " + str(len(loop.loopInstructions))
-            print "LoopInstruction to check: " + str(loopInstruction)
-            loop.loopInstructions.remove(loopInstruction)
-            check = checkLoop(loopInstruction.loopStart(), loopInstruction.loopEnd(), loop)
-            if check == True:
-                loopInstruction.verify()
-            elif check == False:
-                del loopInstruction
-                print "Is A Loop: " + str(check) + "\n"
-                continue
-            loop.loopInstructions.append(loopInstruction)
-            print "Is A Loop: " + str(check) + "\n"
+        Function_start = loop.function.start
+        Function_end = loop.function.end
+        print loop.function.name, Function_start,transformPossition(Function_start), Function_end, transformPossition(Function_end)
+        print str(advancedCheckLoop(loop.function.start, loop.function.end, []))
+        print "-------------------------------------------------------"
 
-    printLoops(loops)
+    # print"-------------------------------- STRAT --------------------------------"
+    # loops = getListOfPossibleLoops(getListOfFunctions())
+    # for loop in loops:
+    #     print "--------------------------------------------------------------------"
+    #     while not loop.isVerified():
+    #         loopInstruction = random.choice(loop.loopInstructions)
+    #         if loopInstruction.verified:
+    #             continue
+    #         print str(loop)
+    #         print "LoopInstructions: " + str(len(loop.loopInstructions))
+    #         print "LoopInstruction to check: " + str(loopInstruction)
+    #         loop.loopInstructions.remove(loopInstruction)
+    #         check = checkLoop(loopInstruction.loopStart(), loopInstruction.loopEnd(), loop)
+    #         if check == True:
+    #             loopInstruction.verify()
+    #         elif check == False:
+    #             del loopInstruction
+    #             print "Is A Loop: " + str(check) + "\n"
+    #             continue
+    #         loop.loopInstructions.append(loopInstruction)
+    #         print "Is A Loop: " + str(check) + "\n"
+    #
+    # printLoops(loops)
     # print"-------------------------------- END --------------------------------"
+
 
 if __name__ == "__main__":
     main()
