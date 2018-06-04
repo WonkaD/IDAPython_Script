@@ -77,7 +77,8 @@ class Loop:
             self.verified = True
 
         def __str__(self):
-            return "[Verified: " + str(self.verified) + "] " + str(self.instruction)
+            return "[Verified: " + str(self.verified) + "] " + "Start: " + transformPossition(
+                self.loopStart()) + " End: " + transformPossition(self.loopEnd())
 
     def __init__(self, function_, loopInstructions):
         self.function = function_
@@ -87,7 +88,8 @@ class Loop:
         res = "Function: " + self.function.name + "(" + transformPossition(
             self.function.start) + ", " + transformPossition(self.function.end) + ")\n"
         for loopInstruction in self.loopInstructions:
-            res += "\t[Verified: " + str(loopInstruction.verified) + "] " + str(loopInstruction.instruction) + "\n"
+            res += "\t" + str(
+                loopInstruction) + "\n"  # "\t [Verified: " + str(loopInstruction.verified) + "] " + str(loopInstruction.instruction) + "\n"
         return res + "\n"
 
     def isVerified(self):
@@ -160,7 +162,6 @@ def bytesToHex(bytes):
 def printLoops(loops):
     verified = 0
     notVerified = 0
-    print "------------------------------------ START ------------------------------------"
     for possibleLoop in loops:
         for loopInstruction in possibleLoop.loopInstructions:
             if loopInstruction.verified:
@@ -171,7 +172,6 @@ def printLoops(loops):
             print possibleLoop
     print "Not verified loops: " + str(notVerified)
     print "Verified loops: " + str(verified)
-    print "------------------------------------  END  ------------------------------------"
 
 
 def printFunction(functionName, functions):
@@ -215,7 +215,7 @@ def getSetOfLoops(start, end, stack=[]):
     return res
 
 
-def getSetOfLoops_2(start, end, stack=[]):
+def getSetOfLoops_2(start, end, stack=set()):
     res = set()
     ea = start
     stack2 = cpSet(stack, ea)
@@ -257,6 +257,29 @@ def cpArray(list, item_=None):
     return res
 
 
+def checkLoop2(start, end, endOfFunction, stack=set()):
+    ea = start
+    stack2 = cpSet(stack, start)
+    while ea != idaapi.BADADDR:
+        mnem = GetMnem(ea)
+        if ea == end:
+            return True
+        elif mnem.startswith("j"):
+            jumpDst = GetOperandValue(ea, 0)
+            if jumpDst in stack2:
+                return False
+            elif mnem == "jmp":
+                return checkLoop2(jumpDst, end, endOfFunction, stack2)
+            else:
+                if checkLoop2(jumpDst, end, endOfFunction, stack2):
+                    return True
+        elif mnem == "retn" or ea == endOfFunction:
+            return False
+        ea = NextHead(ea, idaapi.cvar.inf.maxEA)
+        stack2.add(ea)
+    return False
+
+
 def checkLoop(start, end, stack=[]):
     ea = start
     while ea != idaapi.BADADDR:
@@ -284,8 +307,6 @@ def main():
     count = 0
     ts = time.time()
     for loop in loops:
-        if loop.function.name != "_main":
-             continue
         Function_start = loop.function.start
         Function_end = loop.function.end
         check_loop = getSetOfLoops_2(loop.function.start, loop.function.end)
@@ -299,19 +320,16 @@ def main():
             print "Bucle: ", transformPossition(int(b[0])), transformPossition(int(b[1]))
         print ""
     print "Total: ", count, "\t\tTime: ", str((time.time() - ts)), "seg."
-    #
-    # print "--------------------------------------------------------------------"
-    # ts = time.time()
-    # for loop in loops:
-    #     if loop.function.name != "_main":
-    #         del loop
-    #         continue
-    #     for loopInstruction in loop.loopInstructions:
-    #         check = checkLoop(loopInstruction.loopStart(), loopInstruction.loopEnd())
-    #         if check == True:
-    #             loopInstruction.verify()
-    # printLoops(loops)
-    # print "Time: ", str((time.time() - ts)), "seg."
+
+    print "--------------------------------------------------------------------"
+    ts = time.time()
+    for loop in loops:
+        for loopInstruction in loop.loopInstructions:
+            if checkLoop2(loopInstruction.loopStart(), loopInstruction.loopEnd(), loop.function.end):
+                loopInstruction.verify()
+    finishTime = str((time.time() - ts))
+    printLoops(loops)
+    print "Time: ", finishTime, "seg."
     print"-------------------------------- END --------------------------------"
 
 
