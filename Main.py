@@ -209,7 +209,7 @@ def getSetOfLoops(start, end, stack=[]):
                 res.update(getSetOfLoops(jumpDst, end, cpArray(stack, ea)))
                 if GetMnem(ea) == "jmp":
                     return res
-        elif GetMnem(ea) == "retn":
+        elif GetMnem(ea).startswith("ret"):
             break
         ea = NextHead(ea, idaapi.cvar.inf.maxEA)
     return res
@@ -232,7 +232,7 @@ def getSetOfLoops_2(start, end, stack=set()):
                 res.update(getSetOfLoops_2(jumpDst, end, stack2))
                 if GetMnem(ea) == "jmp":
                     return res
-        elif GetMnem(ea) == "retn":
+        elif GetMnem(ea).startswith("ret"):
             break
         ea = NextHead(ea, idaapi.cvar.inf.maxEA)
         stack2.add(ea)
@@ -273,7 +273,7 @@ def checkLoop2(start, end, endOfFunction, stack=set()):
             else:
                 if checkLoop2(jumpDst, end, endOfFunction, stack2):
                     return True
-        elif mnem == "retn" or ea == endOfFunction:
+        elif mnem.startswith("ret") or ea == endOfFunction:
             return False
         ea = NextHead(ea, idaapi.cvar.inf.maxEA)
         stack2.add(ea)
