@@ -25,7 +25,7 @@ class Function:
         self.disassembled = self.disassembleFunction()
 
     def __str__(self):
-        res = self.name + " (" + transformPossition(self.start) + ", " + transformPossition(self.end) + ")\n"
+        res = self.name + " (" + transformPosition(self.start) + ", " + transformPosition(self.end) + ")\n"
         for disassembledInstruction in self.disassembled:
             res += str(disassembledInstruction) + " : " + bytesToHex(disassembledInstruction.getOpCode()) + "\n"
         return res
@@ -33,35 +33,35 @@ class Function:
     def disassembleFunction(self):
         res = []
         for head in Heads(self.start, self.end):
-            res.append(Disassembled(head, GetDisasm(head)))
+            res.append(Disassembled(head))
         return res
 
 
 class Disassembled:
-    def __init__(self, possition, instruction):
-        self.possition = possition
-        self.instruction = instruction
+    def __init__(self, position):
+        self.position = position
+        self.instruction = GetDisasm(position)
 
     def __str__(self):
-        return transformPossition(self.possition) + " : " + self.instruction
+        return transformPosition(self.position) + " : " + self.instruction
 
     def OpCode(self):
-        return GetManyBytes(self.possition, ItemSize(self.possition))
+        return GetManyBytes(self.position, ItemSize(self.position))
 
     def Instruction(self):
-        return GetMnem(self.possition)
+        return GetMnem(self.position)
 
     def Operand(self, i):
-        return GetOpnd(self.possition, i)
+        return GetOpnd(self.position, i)
 
     def OperandValue(self, i):
-        return GetOperandValue(self.possition, i)
+        return GetOperandValue(self.position, i)
 
     def OperandType(self, i):
-        return GetOpType(self.possition, i)
+        return GetOpType(self.position, i)
 
 
-class Loop:
+class LoopFunction:
     class LoopInstruction:
         def __init__(self, instruction, verified=False):
             self.instruction = instruction
@@ -71,22 +71,22 @@ class Loop:
             return self.instruction.OperandValue(0)
 
         def loopEnd(self):
-            return self.instruction.possition
+            return self.instruction.position
 
         def verify(self):
             self.verified = True
 
         def __str__(self):
-            return "[Verified: " + str(self.verified) + "] " + "Start: " + transformPossition(
-                self.loopStart()) + " End: " + transformPossition(self.loopEnd())
+            return "[Verified: " + str(self.verified) + "] " + "Start: " + transformPosition(
+                self.loopStart()) + " End: " + transformPosition(self.loopEnd())
 
     def __init__(self, function_, loopInstructions):
         self.function = function_
         self.loopInstructions = loopInstructions
 
     def __str__(self):
-        res = "Function: " + self.function.name + "(" + transformPossition(
-            self.function.start) + ", " + transformPossition(self.function.end) + ")\n"
+        res = "Function: " + self.function.name + "(" + transformPosition(
+            self.function.start) + ", " + transformPosition(self.function.end) + ")\n"
         for loopInstruction in self.loopInstructions:
             res += "\t" + str(
                 loopInstruction) + "\n"  # "\t [Verified: " + str(loopInstruction.verified) + "] " + str(loopInstruction.instruction) + "\n"
@@ -113,12 +113,12 @@ def getListOfFunctions():
 
 
 def checkJmpDestination(function, jmpInstruction):
-    if jmpInstruction.OperandValue(0) >= jmpInstruction.possition:
+    if jmpInstruction.OperandValue(0) >= jmpInstruction.position:
         return False
     else:
         return isJmpInTheFunction(function, jmpInstruction.OperandValue(0))
         # for instruction in instructions:
-        #     if instruction.possition == jmpInstruction.OperandValue(0):
+        #     if instruction.position == jmpInstruction.OperandValue(0):
         #         return True
         # return False
     pass
@@ -135,24 +135,24 @@ def getListOfPossibleLoops(functions):
         for instruction in function.disassembled:
             mnemonicName = instruction.Instruction()
             if mnemonicName.startswith("j") and checkJmpDestination(function, instruction):
-                loopInstructions.append(Loop.LoopInstruction(instruction))
+                loopInstructions.append(LoopFunction.LoopInstruction(instruction))
                 # print "Salto hacia arriba", function.name, str(instruction)
             elif "loop" in mnemonicName:
-                loopInstructions.append(Loop.LoopInstruction(instruction, True))
+                loopInstructions.append(LoopFunction.LoopInstruction(instruction, True))
                 # print "Bucle", function.name, str(instruction)
             elif "call" in mnemonicName and function.name == instruction.Operand(0):
-                loopInstructions.append(Loop.LoopInstruction(instruction, True))
+                loopInstructions.append(LoopFunction.LoopInstruction(instruction, True))
                 # print "Operacion recursiva", function.name, str(instruction)
         if len(loopInstructions) != 0:
-            loopFunctions.append(Loop(function, loopInstructions))
+            loopFunctions.append(LoopFunction(function, loopInstructions))
     return loopFunctions
 
 
 # -------------------------------------- UTILS --------------------------------------
 
 
-def transformPossition(possition):
-    return "0x%08x" % (possition)
+def transformPosition(position):
+    return "0x%08x" % (position)
 
 
 def bytesToHex(bytes):
@@ -177,17 +177,16 @@ def printLoops(loops):
 def printFunction(functionName, functions):
     for function in functions:
         if functionName == function.name:
-            print function.name, transformPossition(function.start), transformPossition(function.end)
+            print function.name, transformPosition(function.start), transformPosition(function.end)
             for asm in function.disassembled:
-                print transformPossition(asm.possition), ": ", asm.instruction, "#", asm.Instruction(), asm.Operand(
+                print transformPosition(asm.position), ": ", asm.instruction, "#", asm.Instruction(), asm.Operand(
                     0), asm.OperandType(0), asm.OperandValue(0), bytesToHex(asm.OpCode())
 
 
-def contains(loopInstructions, jumpDst):
-    for loopInstruction in loopInstructions:
-        if loopInstruction.loopStart() == jumpDst:
-            # print "Contains \t" + str(loopInstruction)
-            return loopInstruction.verified
+def contains(list, filter):
+    for item in list:
+        if filter(item):
+            return item
     return None
 
 
@@ -220,7 +219,7 @@ def getSetOfLoops_2(start, end, stack=set()):
     ea = start
     stack2 = cpSet(stack, ea)
     while ea != idaapi.BADADDR:
-        if ea == end:
+        if ea == end or GetMnem(ea).startswith("ret"):
             break
         elif GetMnem(ea).startswith("j"):
             jumpDst = GetOperandValue(ea, 0)
@@ -232,8 +231,6 @@ def getSetOfLoops_2(start, end, stack=set()):
                 res.update(getSetOfLoops_2(jumpDst, end, stack2))
                 if GetMnem(ea) == "jmp":
                     return res
-        elif GetMnem(ea).startswith("ret"):
-            break
         ea = NextHead(ea, idaapi.cvar.inf.maxEA)
         stack2.add(ea)
     return res
@@ -264,6 +261,8 @@ def checkLoop2(start, end, endOfFunction, stack=set()):
         mnem = GetMnem(ea)
         if ea == end:
             return True
+        elif mnem.startswith("ret") or ea == endOfFunction:
+            return False
         elif mnem.startswith("j"):
             jumpDst = GetOperandValue(ea, 0)
             if jumpDst in stack2:
@@ -273,8 +272,6 @@ def checkLoop2(start, end, endOfFunction, stack=set()):
             else:
                 if checkLoop2(jumpDst, end, endOfFunction, stack2):
                     return True
-        elif mnem.startswith("ret") or ea == endOfFunction:
-            return False
         ea = NextHead(ea, idaapi.cvar.inf.maxEA)
         stack2.add(ea)
     return False
@@ -302,35 +299,93 @@ def checkLoop(start, end, stack=[]):
 
 
 def main():
-    print"-------------------------------- START --------------------------------"
-    loops = getListOfPossibleLoops(getListOfFunctions())
-    count = 0
-    ts = time.time()
-    for loop in loops:
-        Function_start = loop.function.start
-        Function_end = loop.function.end
-        check_loop = getSetOfLoops_2(loop.function.start, loop.function.end)
-        if len(check_loop) == 0:
-            continue
-        print loop.function.name, Function_start, transformPossition(Function_start), Function_end, transformPossition(
-            Function_end)
-        for a in check_loop:
-            count += 1
-            b = a.split(",")
-            print "Bucle: ", transformPossition(int(b[0])), transformPossition(int(b[1]))
-        print ""
-    print "Total: ", count, "\t\tTime: ", str((time.time() - ts)), "seg."
+    TimeStamp()
+    checkResults()
 
-    print "--------------------------------------------------------------------"
-    ts = time.time()
-    for loop in loops:
-        for loopInstruction in loop.loopInstructions:
-            if checkLoop2(loopInstruction.loopStart(), loopInstruction.loopEnd(), loop.function.end):
+
+def checkResults():
+    temp = getListOfPossibleLoops(getListOfFunctions())
+    loopFunctionsMethod1 = []
+    for possibleLoopFunction in temp:
+        loopInstructions = []
+        check_loop = getSetOfLoops_2(possibleLoopFunction.function.start, possibleLoopFunction.function.end)
+        for a in possibleLoopFunction.loopInstructions:
+            if a.verified:
+                loopInstructions.append(a)
+        for a in check_loop:
+            loopInstructions.append(LoopFunction.LoopInstruction(Disassembled(int(a.split(",")[1])), verified=True))
+        if len(loopInstructions) != 0:
+            loopFunctionsMethod1.append(LoopFunction(possibleLoopFunction.function, loopInstructions))
+    temp = getListOfPossibleLoops(getListOfFunctions())
+    loopFunctionsMethod2 = []
+    for possibleLoopFunction in temp:
+        loopInstructions = []
+        for loopInstruction in possibleLoopFunction.loopInstructions:
+            if checkLoop2(loopInstruction.loopStart(), loopInstruction.loopEnd(),
+                          possibleLoopFunction.function.end):
                 loopInstruction.verify()
-    finishTime = str((time.time() - ts))
-    printLoops(loops)
-    print "Time: ", finishTime, "seg."
-    print"-------------------------------- END --------------------------------"
+            if loopInstruction.verified:
+                loopInstructions.append(loopInstruction)
+        if len(loopInstructions) != 0:
+            loopFunctionsMethod2.append(LoopFunction(possibleLoopFunction.function, loopInstructions))
+    print "Method1 result checking in method2 result"
+    for x in loopFunctionsMethod1:
+        item = contains(loopFunctionsMethod2, lambda z: z.function.name == x.function.name)
+        if item:
+            for a in x.loopInstructions:
+                if not contains(item.loopInstructions,
+                                lambda z: z.loopStart() == a.loopStart() and z.loopEnd() == a.loopEnd()):
+                    print "Method 1: ", x.function.name, str(a)
+        else:
+            print str(x)
+    print "Method2 result checking in method1 result"
+    for x in loopFunctionsMethod2:
+        item = contains(loopFunctionsMethod1, lambda z: z.function.name == x.function.name)
+        if item:
+            for a in x.loopInstructions:
+                if not contains(item.loopInstructions,
+                                lambda z: z.loopStart() == a.loopStart() and z.loopEnd() == a.loopEnd()):
+                    print "Method 2: ", x.function.name, str(a)
+        else:
+            print str(x)
+
+
+def TimeStamp():
+    method1Time = 0
+    method2Time = 0
+    for x in xrange(0, 10):
+        possibleLoopFunctions = getListOfPossibleLoops(getListOfFunctions())
+        timestamp = 0
+        loopFunctions = []
+        for possibleLoopFunction in possibleLoopFunctions:
+            loopInstructions = []
+            ts = time.time()
+            check_loop = getSetOfLoops_2(possibleLoopFunction.function.start, possibleLoopFunction.function.end)
+            ts = time.time() - ts
+            timestamp += ts
+            for a in possibleLoopFunction.loopInstructions:
+                if a.verified:
+                    loopInstructions.append(a)
+            for a in check_loop:
+                loopInstructions.append(LoopFunction.LoopInstruction(Disassembled(int(a.split(",")[1])), verified=True))
+            if len(loopInstructions) != 0:
+                loopFunctions.append(LoopFunction(possibleLoopFunction.function, loopInstructions))
+        method1Time += timestamp
+
+        possibleLoopFunctions = getListOfPossibleLoops(getListOfFunctions())
+        timestamp = 0
+        for possibleLoopFunction in possibleLoopFunctions:
+            for loopInstruction in possibleLoopFunction.loopInstructions:
+                ts = time.time()
+                check_loop_ = checkLoop2(loopInstruction.loopStart(), loopInstruction.loopEnd(),
+                                         possibleLoopFunction.function.end)
+                ts = time.time() - ts
+                timestamp += ts
+                if check_loop_:
+                    loopInstruction.verify()
+        method2Time += timestamp
+    print "Method 1 average timestamp: ", method1Time / 10
+    print "Method 2 average timestamp: ", method2Time / 10
 
 
 if __name__ == "__main__":
