@@ -1,22 +1,44 @@
-# -------------------------------------- IMPORTS --------------------------------------
-
-
+# region -------------------------------------- IMPORTS --------------------------------------
 import binascii
 import random
 import sys
 import time
 
-# -------------------------------------- GLOBAL --------------------------------------
+# endregion
 
+# region --------------------------------------  GLOBAL --------------------------------------
 sys.setrecursionlimit(5000)
-ASM_JMP_INSTRUCTIONS = ["JMP", "JA", "JNBE", "JAE", "JB", "JNAE", "JBE", "JNA", "JE", "JZ", "JNE", "JNZ", "JG", "JNLE",
-                        "JGE", "JNL", "JL", "JNGE", "JLE", "JNG", "JC", "JNC", "JNO", "JNP", "JPO", "JNS", "JO", "JP",
-                        "JPE", "JS", "LOOP", ]
+ASM_ARITHMETIC_LOGIC_INSTRUCTIONS = ["aaa", "aad", "aas", "adc", "add", "addpd", "addps", "addsd", "addss", "addsubpd",
+                                     "addsubps", "and", "andpd", "andps", "andnpd", "andnps", "bsf", "bsr", "bswap",
+                                     "bt", "btc", "btr", "bts", "daa", "das", "dec", "div", "divpd", "divps", "divsd",
+                                     "divss", "emms", "f2xm1", "fabs", "fadd", "faddp", "fiadd", "fchs", "fcos",
+                                     "fdecstp", "fdiv", "fdivp", "fidiv", "fdivr", "fdivrp", "fidivr", "fmul", "fmulp",
+                                     "fimul", "fpatan", "fprem", "fprem1", "fptan", "frndint", "fscale", "fsin",
+                                     "fsincos", "fsqrt", "fsub", "fsubp", "fisub", "fsubr", "fsubrp", "fisubr", "fyl2x",
+                                     "fyl2xp1", "haddpd", "haddps", "hsubpd", "hsubps", "idiv", "imul", "inc", "maxpd",
+                                     "maxps", "maxsd", "maxss", "minpd", "minps", "minsd", "minss", "mul", "mulpd",
+                                     "mulps", "mulsd", "mulss", "neg", "not", "or", "orpd", "orps", "paddb", "paddw",
+                                     "paddd", "paddq", "paddsb", "paddsw", "paddusb", "paddusw", "pand", "pandn",
+                                     "pavgb", "pavgw", "pmaddwd", "pmaxsw", "pmaxub", "pminsw", "pminub", "pmovmskb",
+                                     "pmulhuw", "pmulhw", "pmullw", "pmuludq", "por", "psadbw", "pslldq", "psllw",
+                                     "pslld", "psllq", "psraw", "psrad", "psrldq", "psrlw", "psrld", "psrlq", "psubb",
+                                     "psubw", "psubd", "psubq", "psubsb", "psubsw", "psubusb", "psubusw", "pxor", "rcl",
+                                     "rcr", "rol", "ror", "rcpps", "rcpss", "rsqrtps", "rsqrtss", "sal", "sar", "shl",
+                                     "shr", "sbb", "shld", "shrd", "sqrtpd", "sqrtps", "sqrtsd", "sqrtss", "sub",
+                                     "subpd", "subps", "subsd", "subss", "xadd", "xchg", "xor", "xorpd", "xorps"]
 
 
-# -------------------------------------- CLASSES --------------------------------------
+# ASM_ARITHMETIC_INSTRUCTIONS = ["add", "sub", "inc", "dec", "mul", "div", "adc", "xadd", "sdb", "imul", "idiv", "neg"]
+# ASM_LOGIC_INSTRUCTIONS = ["and", "or", "xor", "not"]
+# ASM_SHIFT_INSTRUCTIONS = ["shl", "shr", "shld", "shrd", "sal", "sar"]
+# ASM_JMP_INSTRUCTIONS = ["JMP", "JA", "JNBE", "JAE", "JB", "JNAE", "JBE", "JNA", "JE", "JZ", "JNE", "JNZ", "JG", "JNLE",
+#                         "JGE", "JNL", "JL", "JNGE", "JLE", "JNG", "JC", "JNC", "JNO", "JNP", "JPO", "JNS", "JO", "JP",
+#                         "JPE", "JS", "LOOP", ]
 
 
+# endregion
+
+# region -------------------------------------- CLASSES --------------------------------------
 class Function:
     def __init__(self, name, start, end):
         self.name = name
@@ -62,6 +84,23 @@ class Disassembled:
 
 
 class LoopFunction:
+    def __init__(self, function_, loopInstructions):
+        self.function = function_
+        self.loopInstructions = loopInstructions
+
+    def __str__(self):
+        res = "Function: " + self.function.name + "(" + transformPosition(
+            self.function.start) + ", " + transformPosition(self.function.end) + ")\n"
+        for loopInstruction in self.loopInstructions:
+            res += "\t" + str(loopInstruction) + "\n"
+        return res + "\n"
+
+    def isVerified(self):
+        for loopInstruction in self.loopInstructions:
+            if loopInstruction.verified:
+                return True
+        return False
+
     class LoopInstruction:
         def __init__(self, instruction, verified=False):
             self.instruction = instruction
@@ -80,28 +119,10 @@ class LoopFunction:
             return "[Verified: " + str(self.verified) + "] " + "Start: " + transformPosition(
                 self.loopStart()) + " End: " + transformPosition(self.loopEnd())
 
-    def __init__(self, function_, loopInstructions):
-        self.function = function_
-        self.loopInstructions = loopInstructions
 
-    def __str__(self):
-        res = "Function: " + self.function.name + "(" + transformPosition(
-            self.function.start) + ", " + transformPosition(self.function.end) + ")\n"
-        for loopInstruction in self.loopInstructions:
-            res += "\t" + str(
-                loopInstruction) + "\n"  # "\t [Verified: " + str(loopInstruction.verified) + "] " + str(loopInstruction.instruction) + "\n"
-        return res + "\n"
+# endregion
 
-    def isVerified(self):
-        for loopInstruction in self.loopInstructions:
-            if not loopInstruction.verified:
-                return False
-        return True
-
-
-# -------------------------------------- CODE --------------------------------------
-
-
+# region -------------------------------------- CODE --------------------------------------
 def getListOfFunctions():
     res = []
     for segea in Segments():
@@ -124,10 +145,6 @@ def checkJmpDestination(function, jmpInstruction):
     pass
 
 
-def isJmpInTheFunction(function, jumpDst):
-    return function.start <= jumpDst <= function.end
-
-
 def getListOfPossibleLoops(functions):
     loopFunctions = []
     for function in functions:
@@ -136,19 +153,90 @@ def getListOfPossibleLoops(functions):
             mnemonicName = instruction.Instruction()
             if mnemonicName.startswith("j") and checkJmpDestination(function, instruction):
                 loopInstructions.append(LoopFunction.LoopInstruction(instruction))
-                # print "Salto hacia arriba", function.name, str(instruction)
             elif "loop" in mnemonicName:
                 loopInstructions.append(LoopFunction.LoopInstruction(instruction, True))
-                # print "Bucle", function.name, str(instruction)
             elif "call" in mnemonicName and function.name == instruction.Operand(0):
                 loopInstructions.append(LoopFunction.LoopInstruction(instruction, True))
-                # print "Operacion recursiva", function.name, str(instruction)
         if len(loopInstructions) != 0:
             loopFunctions.append(LoopFunction(function, loopInstructions))
     return loopFunctions
 
 
-# -------------------------------------- UTILS --------------------------------------
+def getSetOfLoops(start, end, stack=set()):
+    res = set()
+    ea = start
+    stack2 = cpSet(stack, ea)
+    while ea != idaapi.BADADDR:
+        if ea == end or GetMnem(ea).startswith("ret"):
+            break
+        elif GetMnem(ea).startswith("j"):
+            jumpDst = GetOperandValue(ea, 0)
+            if jumpDst in stack2:
+                # if GetOperandValue(ea, 0) == start:
+                res.add(str(jumpDst) + "," + str(ea))
+                break
+            else:
+                res.update(getSetOfLoops(jumpDst, end, stack2))
+                if GetMnem(ea) == "jmp":
+                    return res
+        ea = NextHead(ea, idaapi.cvar.inf.maxEA)
+        stack2.add(ea)
+    return res
+
+
+def checkLoop(start, end, endOfFunction, stack=set()):
+    ea = start
+    stack2 = cpSet(stack, start)
+    while ea != idaapi.BADADDR:
+        mnem = GetMnem(ea)
+        if ea == end:
+            return True
+        elif mnem.startswith("ret") or ea == endOfFunction:
+            return False
+        elif mnem.startswith("j"):
+            jumpDst = GetOperandValue(ea, 0)
+            if jumpDst in stack2:
+                return False
+            elif mnem == "jmp":
+                return checkLoop(jumpDst, end, endOfFunction, stack2)
+            else:
+                if checkLoop(jumpDst, end, endOfFunction, stack2):
+                    return True
+        ea = NextHead(ea, idaapi.cvar.inf.maxEA)
+        stack2.add(ea)
+    return False
+
+
+def verifyLoops(possibleLoopFunctions):
+    for possibleLoopFunction in possibleLoopFunctions:
+        for loopInstruction in possibleLoopFunction.loopInstructions:
+            if checkLoop(loopInstruction.loopStart(), loopInstruction.loopEnd(), possibleLoopFunction.function.end):
+                loopInstruction.verify()
+    return possibleLoopFunctions
+
+
+# endregion
+
+# region -------------------------------------- UTILS --------------------------------------
+def isJmpInTheFunction(function, jumpDst):
+    return function.start <= jumpDst <= function.end
+
+
+def cpSet(list, item_=None):
+    res = set()
+    res.update(list)
+    if item_:
+        res.add(item_)
+    return res
+
+
+def cpArray(list, item_=None):
+    res = []
+    for item in list:
+        res.append(item)
+    if item_:
+        res.append(item_)
+    return res
 
 
 def transformPosition(position):
@@ -174,6 +262,20 @@ def printLoops(loops):
     print "Verified loops: " + str(verified)
 
 
+def printVerifiedLoops(functionLoops):
+    for functionLoop in functionLoops:
+        res = None
+        if functionLoop.isVerified():
+            res = "Function: " + functionLoop.function.name + "(" + transformPosition(
+                functionLoop.function.start) + ", " + transformPosition(functionLoop.function.end) + ")\n"
+            for loopInstruction in functionLoop.loopInstructions:
+                if loopInstruction.verified:
+                    res += "\t" + "Start: " + transformPosition(
+                        loopInstruction.loopStart()) + " End: " + transformPosition(loopInstruction.loopEnd()) + "\n"
+        if res:
+            print res + "\n"
+
+
 def printFunction(functionName, functions):
     for function in functions:
         if functionName == function.name:
@@ -190,125 +292,15 @@ def contains(list, filter):
     return None
 
 
-# -------------------------------------- MAIN --------------------------------------
+# endregion
 
-def getSetOfLoops(start, end, stack=[]):
-    res = set()
-    ea = start
-    while ea != idaapi.BADADDR:
-        if ea == end:
-            break
-        elif GetMnem(ea).startswith("j"):
-            jumpDst = GetOperandValue(ea, 0)
-            if ea in stack:
-                if GetOperandValue(ea, 0) == start:
-                    res.add(str(start) + "," + str(ea))
-                break
-            else:
-                res.update(getSetOfLoops(jumpDst, end, cpArray(stack, ea)))
-                if GetMnem(ea) == "jmp":
-                    return res
-        elif GetMnem(ea).startswith("ret"):
-            break
-        ea = NextHead(ea, idaapi.cvar.inf.maxEA)
-    return res
-
-
-def getSetOfLoops_2(start, end, stack=set()):
-    res = set()
-    ea = start
-    stack2 = cpSet(stack, ea)
-    while ea != idaapi.BADADDR:
-        if ea == end or GetMnem(ea).startswith("ret"):
-            break
-        elif GetMnem(ea).startswith("j"):
-            jumpDst = GetOperandValue(ea, 0)
-            if jumpDst in stack2:
-                # if GetOperandValue(ea, 0) == start:
-                res.add(str(jumpDst) + "," + str(ea))
-                break
-            else:
-                res.update(getSetOfLoops_2(jumpDst, end, stack2))
-                if GetMnem(ea) == "jmp":
-                    return res
-        ea = NextHead(ea, idaapi.cvar.inf.maxEA)
-        stack2.add(ea)
-    return res
-
-
-def cpSet(list, item_=None):
-    res = set()
-    for item in list:
-        res.add(item)
-    if item_:
-        res.add(item_)
-    return res
-
-
-def cpArray(list, item_=None):
-    res = []
-    for item in list:
-        res.append(item)
-    if item_:
-        res.append(item_)
-    return res
-
-
-def checkLoop2(start, end, endOfFunction, stack=set()):
-    ea = start
-    stack2 = cpSet(stack, start)
-    while ea != idaapi.BADADDR:
-        mnem = GetMnem(ea)
-        if ea == end:
-            return True
-        elif mnem.startswith("ret") or ea == endOfFunction:
-            return False
-        elif mnem.startswith("j"):
-            jumpDst = GetOperandValue(ea, 0)
-            if jumpDst in stack2:
-                return False
-            elif mnem == "jmp":
-                return checkLoop2(jumpDst, end, endOfFunction, stack2)
-            else:
-                if checkLoop2(jumpDst, end, endOfFunction, stack2):
-                    return True
-        ea = NextHead(ea, idaapi.cvar.inf.maxEA)
-        stack2.add(ea)
-    return False
-
-
-def checkLoop(start, end, stack=[]):
-    ea = start
-    while ea != idaapi.BADADDR:
-        if ea == end:
-            return True
-        elif GetMnem(ea).startswith("j"):
-            jumpDst = GetOperandValue(ea, 0)
-            if ea in stack:
-                return False
-            elif GetMnem(ea) == "jmp":
-                return checkLoop(jumpDst, end, cpArray(stack, ea))
-            else:
-                if checkLoop(jumpDst, end, cpArray(stack, ea)):
-                    return True
-        elif GetMnem(ea) == "retn":
-            return False
-        ea = NextHead(ea, idaapi.cvar.inf.maxEA)
-
-    return False
-
-
-def main():
-    TimeStamp()
-    checkResults()
-
-
+# region Testing Phase 2
 def checkResults():
     temp = getListOfPossibleLoops(getListOfFunctions())
     loopFunctionsMethod1 = []
     for possibleLoopFunction in temp:
         loopInstructions = []
-        check_loop = getSetOfLoops_2(possibleLoopFunction.function.start, possibleLoopFunction.function.end)
+        check_loop = getSetOfLoops(possibleLoopFunction.function.start, possibleLoopFunction.function.end)
         for a in possibleLoopFunction.loopInstructions:
             if a.verified:
                 loopInstructions.append(a)
@@ -321,8 +313,8 @@ def checkResults():
     for possibleLoopFunction in temp:
         loopInstructions = []
         for loopInstruction in possibleLoopFunction.loopInstructions:
-            if checkLoop2(loopInstruction.loopStart(), loopInstruction.loopEnd(),
-                          possibleLoopFunction.function.end):
+            if checkLoop(loopInstruction.loopStart(), loopInstruction.loopEnd(),
+                         possibleLoopFunction.function.end):
                 loopInstruction.verify()
             if loopInstruction.verified:
                 loopInstructions.append(loopInstruction)
@@ -360,7 +352,7 @@ def TimeStamp():
         for possibleLoopFunction in possibleLoopFunctions:
             loopInstructions = []
             ts = time.time()
-            check_loop = getSetOfLoops_2(possibleLoopFunction.function.start, possibleLoopFunction.function.end)
+            check_loop = getSetOfLoops(possibleLoopFunction.function.start, possibleLoopFunction.function.end)
             ts = time.time() - ts
             timestamp += ts
             for a in possibleLoopFunction.loopInstructions:
@@ -377,8 +369,8 @@ def TimeStamp():
         for possibleLoopFunction in possibleLoopFunctions:
             for loopInstruction in possibleLoopFunction.loopInstructions:
                 ts = time.time()
-                check_loop_ = checkLoop2(loopInstruction.loopStart(), loopInstruction.loopEnd(),
-                                         possibleLoopFunction.function.end)
+                check_loop_ = checkLoop(loopInstruction.loopStart(), loopInstruction.loopEnd(),
+                                        possibleLoopFunction.function.end)
                 ts = time.time() - ts
                 timestamp += ts
                 if check_loop_:
@@ -388,5 +380,145 @@ def TimeStamp():
     print "Method 2 average timestamp: ", method2Time / 10
 
 
+# endregion
+
+# region -------------------------------------- MAIN --------------------------------------
+def weighInstruction(ea, numberOfInstructions):
+    if possibleCipherXOR(ea, GetMnem(ea)):
+        return numberOfInstructions / 2.5
+    if GetMnem(ea) in ASM_ARITHMETIC_LOGIC_INSTRUCTIONS:
+        return 1
+    return 0
+
+
+def main():
+    # printVerifiedLoops(verifyLoops(getListOfPossibleLoops(getListOfFunctions())))
+    total = 0
+    loopFunctions = getListOfPossibleLoops(getListOfFunctions())
+    for loopFunction in loopFunctions:
+        # if "_encr" not in loopFunction.function.name:
+        #     continue
+        # print str(loopFunction)
+        for loop in loopFunction.loopInstructions:
+            res = getLoopInstructions(loop.loopStart(), loop.loopEnd(), loopFunction.function.end)
+            if len(res) != 0 or loop.verified:
+                total += 1
+                arith_log_ins = 0
+                for ea in res:
+                    arith_log_ins += weighInstruction(ea, len(res))
+                print "-------------"
+                # for x in sorted(res): print transformPosition(x)
+                print arith_log_ins, len(res), float(arith_log_ins) / len(res)
+                if float(arith_log_ins) / len(res) >= 0.45:
+                    print printPossibleCipher(loopFunction)
+                    break
+            # print "\n\n"
+
+    print total
+
+
+def printPossibleCipherXOR(ea, loopFunction):
+    print "XOR:", transformPosition(
+        ea), "Function: ", loopFunction.function.name, transformPosition(
+        loopFunction.function.start), transformPosition(loopFunction.function.end)
+
+
+def printPossibleCipher(loopFunction):
+    print "Possible Cipher Function: ", loopFunction.function.name, transformPosition(
+        loopFunction.function.start), transformPosition(loopFunction.function.end)
+
+
+def possibleCipherXOR(ea, mnem):
+    return mnem == "xor" and GetOpnd(ea, 0) != GetOpnd(ea, 1) and GetOpType(ea, 0) != 5 and GetOpType(ea, 1) != 5
+
+
+def getLoopInstructions(startOfLoop, endOfLoop, endOfFunction, stack=set()):
+    # print transformPosition(startOfLoop)
+    ea = startOfLoop
+    stack2 = cpSet(stack, ea)
+    res = set()
+    while ea != idaapi.BADADDR:
+        mnem = GetMnem(ea)
+        if ea == endOfLoop:
+            # print "Bucle"
+            if len(res) != 0:
+                stack2.update(res)
+            return stack2
+        elif mnem.startswith("ret") or ea == endOfFunction:
+            # print "Fin"
+            if len(res) != 0:
+                return res
+            return set()
+        elif mnem.startswith("j"):
+            jumpDst = GetOperandValue(ea, 0)
+            if mnem == "jmp":
+                if jumpDst in stack2:
+                    return res
+                res2 = getLoopInstructions(jumpDst, endOfLoop, endOfFunction, stack2)
+                if len(res2) != 0:
+                    res.update(res2)
+                    res.update(stack2)
+                # print "Stack:", sorted([transformPosition(x) for x in stack2]), "Res:", sorted([transformPosition(x) for x in res]), "Len:", len(res)
+                return res
+
+            else:
+                if jumpDst not in stack2:
+                    res2 = getLoopInstructions(jumpDst, endOfLoop, endOfFunction, stack2)
+                    if len(res2) != 0:
+                        res.update(res2)
+                        res.update(stack2)
+                    # print "Stack:", sorted([transformPosition(x) for x in stack2]), "Res:", sorted([transformPosition(x) for x in res]), "Len:", len(res)
+
+        ea = NextHead(ea, idaapi.cvar.inf.maxEA)
+        stack2.add(ea)
+        # print transformPosition(ea)
+    # print "Fin While"
+    if len(res) != 0:
+        stack2.update(res)
+        return stack2
+    return set()
+
+
 if __name__ == "__main__":
     main()
+# endregion
+# def checkLoop(start, end, stack=[]):
+#     ea = start
+#     while ea != idaapi.BADADDR:
+#         if ea == end:
+#             return True
+#         elif GetMnem(ea).startswith("j"):
+#             jumpDst = GetOperandValue(ea, 0)
+#             if ea in stack:
+#                 return False
+#             elif GetMnem(ea) == "jmp":
+#                 return checkLoop(jumpDst, end, cpArray(stack, ea))
+#             else:
+#                 if checkLoop(jumpDst, end, cpArray(stack, ea)):
+#                     return True
+#         elif GetMnem(ea) == "retn":
+#             return False
+#         ea = NextHead(ea, idaapi.cvar.inf.maxEA)
+#     return False
+
+
+# def getSetOfLoops(start, end, stack=[]):
+#     res = set()
+#     ea = start
+#     while ea != idaapi.BADADDR:
+#         if ea == end:
+#             break
+#         elif GetMnem(ea).startswith("j"):
+#             jumpDst = GetOperandValue(ea, 0)
+#             if ea in stack:
+#                 if GetOperandValue(ea, 0) == start:
+#                     res.add(str(start) + "," + str(ea))
+#                 break
+#             else:
+#                 res.update(getSetOfLoops(jumpDst, end, cpArray(stack, ea)))
+#                 if GetMnem(ea) == "jmp":
+#                     return res
+#         elif GetMnem(ea).startswith("ret"):
+#             break
+#         ea = NextHead(ea, idaapi.cvar.inf.maxEA)
+#     return res

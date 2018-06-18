@@ -88,7 +88,33 @@ char * xorencryptRecursive(char * message, char * key) {
     encrypted[messagelen] = '\0';
     return encrypted;
 }
-	
+
+int bucles () {
+	int a = 5;
+again:
+	while(a != 24){
+		if (a==5){
+            while (a != 24){
+			    a = a - 1;
+		    }
+		}
+		goto vamos;
+volvemos:
+		if (a == 31) goto again;
+		if (a == 0) break;
+		a = a + 3;
+		if (a == 2) continue;
+		else a = a - 32;
+	}
+    return 0;
+
+vamos:
+    a = a * 2;
+    goto volvemos;
+    return 0;
+}
+
+
 int main(int argc, char * argv[]) {
 	char * message = "test message";
     char * key = "abc";
@@ -113,21 +139,7 @@ int main(int argc, char * argv[]) {
     printf("RECURSIVE: %s\n", encrypted);
     
 	free(encrypted);
-	int a = 5;
-again:
-	while(a != 24){
-		if (a==5) a = a + 24;
-		while (a != 24){
-			a = a - 1;
-		}
-		a = a * 3;
-		if (a == 31) goto again;
-		if (a == 0) break;
-		a = a % 4;
-		if (a == 2) continue;
-		else a = a - 32;
-	}
-    return 0;
+    return bucles();
 }
 
 
