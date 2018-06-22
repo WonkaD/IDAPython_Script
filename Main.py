@@ -385,7 +385,7 @@ def TimeStamp():
 # region -------------------------------------- MAIN --------------------------------------
 def weighInstruction(ea, numberOfInstructions):
     if possibleCipherXOR(ea, GetMnem(ea)):
-        return numberOfInstructions / 2.5
+        return numberOfInstructions / 2
     if GetMnem(ea) in ASM_ARITHMETIC_LOGIC_INSTRUCTIONS:
         return 1
     return 0
@@ -397,20 +397,31 @@ def main():
     loopFunctions = getListOfPossibleLoops(getListOfFunctions())
     for loopFunction in loopFunctions:
         # if "_encr" not in loopFunction.function.name:
-        #     continue
-        # print str(loopFunction)
+        #      continue
+        # print loopFunction.function.name
         for loop in loopFunction.loopInstructions:
             res = getLoopInstructions(loop.loopStart(), loop.loopEnd(), loopFunction.function.end)
             if len(res) != 0 or loop.verified:
                 total += 1
                 arith_log_ins = 0
-                for ea in res:
-                    arith_log_ins += weighInstruction(ea, len(res))
-                print "-------------"
+                bonus = 0
+                buffer_inc = False
+                for ea in sorted(res):
+                    if not buffer_inc and bufferInc(ea, GetMnem(ea)):
+                        buffer_inc = True
+                    weigh_instruction = weighInstruction(ea, len(res))
+                    if weigh_instruction != 0:
+                        bonus += 1
+                    else:
+                        bonus = (bonus - 1, 0)[bonus == 0]
+                    arith_log_ins += (weigh_instruction * bonus)
+                # print arith_log_ins, len(res), float(arith_log_ins) / len(res)
+                # print "-------------"
                 # for x in sorted(res): print transformPosition(x)
-                print arith_log_ins, len(res), float(arith_log_ins) / len(res)
-                if float(arith_log_ins) / len(res) >= 0.45:
+                if float(arith_log_ins) / len(res) >= 0.55 and buffer_inc:
+                    print arith_log_ins, len(res), float(arith_log_ins) / len(res)
                     print printPossibleCipher(loopFunction)
+                    print "#########################\n\n"
                     break
             # print "\n\n"
 
@@ -427,28 +438,28 @@ def printPossibleCipher(loopFunction):
     print "Possible Cipher Function: ", loopFunction.function.name, transformPosition(
         loopFunction.function.start), transformPosition(loopFunction.function.end)
 
-
+# NOT xor R1, R1 / XOR Value, Value
 def possibleCipherXOR(ea, mnem):
     return mnem == "xor" and GetOpnd(ea, 0) != GetOpnd(ea, 1) and GetOpType(ea, 0) != 5 and GetOpType(ea, 1) != 5
 
+# inc REG / add [addr], 1
+def bufferInc(ea, mnem):
+    return mnem == "inc" or mnem == "add" and GetOpType(ea, 1) == 5 and GetOperandValue(ea, 1) == 1 and GetOpType(ea, 0) == 4
+
+
 
 def getLoopInstructions(startOfLoop, endOfLoop, endOfFunction, stack=set()):
-    # print transformPosition(startOfLoop)
     ea = startOfLoop
     stack2 = cpSet(stack, ea)
     res = set()
     while ea != idaapi.BADADDR:
         mnem = GetMnem(ea)
         if ea == endOfLoop:
-            # print "Bucle"
             if len(res) != 0:
                 stack2.update(res)
             return stack2
         elif mnem.startswith("ret") or ea == endOfFunction:
-            # print "Fin"
-            if len(res) != 0:
-                return res
-            return set()
+            return res
         elif mnem.startswith("j"):
             jumpDst = GetOperandValue(ea, 0)
             if mnem == "jmp":
@@ -458,25 +469,20 @@ def getLoopInstructions(startOfLoop, endOfLoop, endOfFunction, stack=set()):
                 if len(res2) != 0:
                     res.update(res2)
                     res.update(stack2)
-                # print "Stack:", sorted([transformPosition(x) for x in stack2]), "Res:", sorted([transformPosition(x) for x in res]), "Len:", len(res)
                 return res
-
             else:
                 if jumpDst not in stack2:
                     res2 = getLoopInstructions(jumpDst, endOfLoop, endOfFunction, stack2)
                     if len(res2) != 0:
                         res.update(res2)
                         res.update(stack2)
-                    # print "Stack:", sorted([transformPosition(x) for x in stack2]), "Res:", sorted([transformPosition(x) for x in res]), "Len:", len(res)
-
         ea = NextHead(ea, idaapi.cvar.inf.maxEA)
         stack2.add(ea)
-        # print transformPosition(ea)
-    # print "Fin While"
     if len(res) != 0:
         stack2.update(res)
         return stack2
     return set()
+    # print "Stack:", sorted([transformPosition(x) for x in stack2]), "Res:", sorted([transformPosition(x) for x in res]), "Len:", len(res)
 
 
 if __name__ == "__main__":
