@@ -291,7 +291,6 @@ def contains(list, filter):
             return item
     return None
 
-
 # endregion
 
 # region Testing Phase 2
@@ -393,16 +392,17 @@ def weighInstruction(ea, numberOfInstructions):
 
 def main():
     # printVerifiedLoops(verifyLoops(getListOfPossibleLoops(getListOfFunctions())))
-    total = 0
     loopFunctions = getListOfPossibleLoops(getListOfFunctions())
+    i = 0
     for loopFunction in loopFunctions:
-        # if "_encr" not in loopFunction.function.name:
-        #      continue
+        # if "__nptl_setxid" not in loopFunction.function.name:
+        #     continue
         # print loopFunction.function.name
         for loop in loopFunction.loopInstructions:
+            # printProgressBar(i + 1, total, prefix='Progress:', suffix='Complete', length=50)
+            # print str(loop)
             res = getLoopInstructions(loop.loopStart(), loop.loopEnd(), loopFunction.function.end)
             if len(res) != 0 or loop.verified:
-                total += 1
                 arith_log_ins = 0
                 bonus = 0
                 buffer_inc = False
@@ -418,14 +418,11 @@ def main():
                 # print arith_log_ins, len(res), float(arith_log_ins) / len(res)
                 # print "-------------"
                 # for x in sorted(res): print transformPosition(x)
+                i += 1
                 if float(arith_log_ins) / len(res) >= 0.55 and buffer_inc:
-                    print arith_log_ins, len(res), float(arith_log_ins) / len(res)
-                    print printPossibleCipher(loopFunction)
-                    print "#########################\n\n"
+                    print str(arith_log_ins) + " / " + str(len(res)) + " = " + str(float(arith_log_ins) / len(res)) + " pt \n" + printPossibleCipher(loopFunction)
+                    print ""
                     break
-            # print "\n\n"
-
-    print total
 
 
 def printPossibleCipherXOR(ea, loopFunction):
@@ -435,17 +432,19 @@ def printPossibleCipherXOR(ea, loopFunction):
 
 
 def printPossibleCipher(loopFunction):
-    print "Possible Cipher Function: ", loopFunction.function.name, transformPosition(
-        loopFunction.function.start), transformPosition(loopFunction.function.end)
+    return "Possible Cipher Function: " + loopFunction.function.name +" "+ transformPosition(
+        loopFunction.function.start) +" "+transformPosition(loopFunction.function.end)
+
 
 # NOT xor R1, R1 / XOR Value, Value
 def possibleCipherXOR(ea, mnem):
     return mnem == "xor" and GetOpnd(ea, 0) != GetOpnd(ea, 1) and GetOpType(ea, 0) != 5 and GetOpType(ea, 1) != 5
 
+
 # inc REG / add [addr], 1
 def bufferInc(ea, mnem):
-    return mnem == "inc" or mnem == "add" and GetOpType(ea, 1) == 5 and GetOperandValue(ea, 1) == 1 and GetOpType(ea, 0) == 4
-
+    return mnem == "inc" or mnem == "add" and GetOpType(ea, 1) == 5 and GetOperandValue(ea, 1) == 1 and GetOpType(ea,
+                                                                                                                  0) == 4
 
 
 def getLoopInstructions(startOfLoop, endOfLoop, endOfFunction, stack=set()):
