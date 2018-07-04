@@ -1,9 +1,11 @@
 # region -------------------------------------- IMPORTS --------------------------------------
 import binascii
-import random
+import os
 import sys
 import time
-
+import SignalHandler
+import signal
+from threading import Timer
 # endregion
 
 # region --------------------------------------  GLOBAL --------------------------------------
@@ -230,10 +232,9 @@ def cpSet(list, item_=None):
     return res
 
 
-def cpArray(list, item_=None):
+def cloneArray(list, item_=None):
     res = []
-    for item in list:
-        res.append(item)
+    res.extend(list)
     if item_:
         res.append(item_)
     return res
@@ -290,6 +291,7 @@ def contains(list, filter):
         if filter(item):
             return item
     return None
+
 
 # endregion
 
@@ -382,58 +384,87 @@ def TimeStamp():
 # endregion
 
 # region -------------------------------------- MAIN --------------------------------------
-def weighInstruction(ea, numberOfInstructions):
-    if possibleCipherXOR(ea, GetMnem(ea)):
-        return numberOfInstructions / 2
-    if GetMnem(ea) in ASM_ARITHMETIC_LOGIC_INSTRUCTIONS:
-        return 1
-    return 0
-
 
 def main():
-    # printVerifiedLoops(verifyLoops(getListOfPossibleLoops(getListOfFunctions())))
     loopFunctions = getListOfPossibleLoops(getListOfFunctions())
-    i = 0
     for loopFunction in loopFunctions:
-        # if "__nptl_setxid" not in loopFunction.function.name:
+        # if "encry" not in loopFunction.function.name:
         #     continue
         # print loopFunction.function.name
         for loop in loopFunction.loopInstructions:
-            # printProgressBar(i + 1, total, prefix='Progress:', suffix='Complete', length=50)
-            # print str(loop)
-            res = getLoopInstructions(loop.loopStart(), loop.loopEnd(), loopFunction.function.end)
-            if len(res) != 0 or loop.verified:
-                arith_log_ins = 0
-                bonus = 0
-                buffer_inc = False
-                for ea in sorted(res):
-                    if not buffer_inc and bufferInc(ea, GetMnem(ea)):
-                        buffer_inc = True
-                    weigh_instruction = weighInstruction(ea, len(res))
-                    if weigh_instruction != 0:
-                        bonus += 1
-                    else:
-                        bonus = (bonus - 1, 0)[bonus == 0]
-                    arith_log_ins += (weigh_instruction * bonus)
-                # print arith_log_ins, len(res), float(arith_log_ins) / len(res)
-                # print "-------------"
-                # for x in sorted(res): print transformPosition(x)
-                i += 1
-                if float(arith_log_ins) / len(res) >= 0.55 and buffer_inc:
-                    print str(arith_log_ins) + " / " + str(len(res)) + " = " + str(float(arith_log_ins) / len(res)) + " pt \n" + printPossibleCipher(loopFunction)
-                    print ""
+            ways = getAllTheWaysOfLoopWithTimeout(loop, loopFunction, timeout=5)
+            if ways or (loop.verified and ways):
+                buffer_op, call_op, total, xor_op = analyzeLoopsInstructions(ways)
+
+                result = formaThetResultOfTheAnalysis(buffer_op, call_op, loopFunction, total, ways, xor_op)
+                if len(result) != 0:
+                    print result
                     break
 
 
-def printPossibleCipherXOR(ea, loopFunction):
-    print "XOR:", transformPosition(
-        ea), "Function: ", loopFunction.function.name, transformPosition(
-        loopFunction.function.start), transformPosition(loopFunction.function.end)
+def formaThetResultOfTheAnalysis(buffer_op, call_op, loopFunction, total, ways, xor_op):
+    result = ""
+    if buffer_op != -1:
+        if xor_op != -1:
+            result += "\tXOR -->\t\t\t" + transformPosition(xor_op) + "\n"
+        if call_op != -1:
+            result += "\tCALL --> \t\t\t" + transformPosition(call_op) + "\n"
+        if max(total) >= 0.50:
+            result += "\tArithmeticological --> \tAverage: " + str(sum(total)) + " / " + str(len(ways)) + " = " + str(
+                float(sum(total)) / len(ways)) + " Max: " + str(max(total)) + "\n"
+        if len(result) != 0:
+            result = "Possible Cipher Function: " + loopFunction.function.name + " (" + transformPosition(
+                loopFunction.function.start) + ", " + transformPosition(loopFunction.function.end) + ")\n" + result
+    return result
 
 
-def printPossibleCipher(loopFunction):
-    return "Possible Cipher Function: " + loopFunction.function.name +" "+ transformPosition(
-        loopFunction.function.start) +" "+transformPosition(loopFunction.function.end)
+def getAllTheWaysOfLoopWithTimeout(loop, loopFunction, timeout= 10):
+    def timeoutHandler(signum, frame):
+        raise ValueError("Timeout")
+
+    ways = None
+    signal.signal(signal.SIGINT, timeoutHandler)
+    timer = Timer(timeout, SignalHandler.kill, args=(os.getpid(), signal.SIGINT))
+    timer.start()
+    try:
+        ways = getAllWaysOfTheLoop(loop.loopStart(), loop.loopEnd(), loopFunction.function.end)
+        timer.cancel()
+    except RuntimeError:
+        print "Timeout getting all execute instructions of the next loop:", transformPosition(loop.loopStart()), transformPosition(loop.loopEnd())
+    return ways
+
+
+def analyzeLoopsInstructions(ways):
+    total = []
+    for way in ways:
+        arith_log_ins = 0.0
+        buffer_op = -1
+        xor_op = -1
+        call_op = -1
+        bonus = 1
+        no_arith_log_ins = len(way)
+        for ea in way:
+            if GetMnem(ea) in ASM_ARITHMETIC_LOGIC_INSTRUCTIONS:
+                arith_log_ins += 1 * bonus
+                bonus += 1
+                no_arith_log_ins -= 1
+            else:
+                bonus = (bonus - 1, 1)[bonus == 0]
+            if buffer_op == -1 and bufferInc(ea, GetMnem(ea)):
+                buffer_op = ea
+            elif buffer_op == -1 and possibleCipherXOR(ea, GetMnem(ea)):
+                xor_op = ea
+            elif call_op == -1 and GetMnem(ea) == "call":
+                call_op = ea
+
+        total.append(arith_log_ins / float(no_arith_log_ins))
+    return buffer_op, call_op, total, xor_op
+
+
+def print_ways(ways):
+    for way in ways:
+        print "Way:"
+        for x in way: print transformPosition(x)
 
 
 # NOT xor R1, R1 / XOR Value, Value
@@ -441,13 +472,47 @@ def possibleCipherXOR(ea, mnem):
     return mnem == "xor" and GetOpnd(ea, 0) != GetOpnd(ea, 1) and GetOpType(ea, 0) != 5 and GetOpType(ea, 1) != 5
 
 
-# inc REG / add [addr], 1
+# inc REG mnem == "inc" or / add [addr], 1
 def bufferInc(ea, mnem):
-    return mnem == "inc" or mnem == "add" and GetOpType(ea, 1) == 5 and GetOperandValue(ea, 1) == 1 and GetOpType(ea,
-                                                                                                                  0) == 4
+    return mnem == "inc" or mnem == "add" and GetOpType(ea, 1) == 5 and GetOperandValue(ea, 1) == 1
+
+
+def getAllWaysOfTheLoop(startOfLoop, endOfLoop, endOfFunction, stack=[]):
+    ea = startOfLoop
+    ways = []
+    stack = cloneArray(stack)
+    while ea != idaapi.BADADDR:
+        stack.append(ea)
+        mnem = GetMnem(ea)
+        if ea == endOfLoop:
+            ways.append(cloneArray(stack))
+            return cloneArray(ways)
+        elif mnem.startswith("ret") or ea == endOfFunction:
+            break
+        elif mnem.startswith("j"):
+            jumpDst = GetOperandValue(ea, 0)
+            if mnem == "jmp":
+                if jumpDst not in stack:
+                    ways2 = getAllWaysOfTheLoop(jumpDst, endOfLoop, endOfFunction, cloneArray(stack))
+                    if ways2:
+                        ways.extend(ways2)
+                        return cloneArray(ways)
+                break
+            else:
+                if jumpDst not in stack:
+                    ways2 = getAllWaysOfTheLoop(jumpDst, endOfLoop, endOfFunction, cloneArray(stack))
+                    if ways2:
+                        ways.extend(ways2)
+        ea = NextHead(ea, idaapi.cvar.inf.maxEA)
+
+    if len(ways) != 0:
+        return cloneArray(ways)
+    return None
 
 
 def getLoopInstructions(startOfLoop, endOfLoop, endOfFunction, stack=set()):
+    if maxdepth == 0:
+        return set()
     ea = startOfLoop
     stack2 = cpSet(stack, ea)
     res = set()
@@ -485,7 +550,11 @@ def getLoopInstructions(startOfLoop, endOfLoop, endOfFunction, stack=set()):
 
 
 if __name__ == "__main__":
+    print "-------INICIO-------"
     main()
+    print "-------FIN-------"
+
+
 # endregion
 # def checkLoop(start, end, stack=[]):
 #     ea = start
