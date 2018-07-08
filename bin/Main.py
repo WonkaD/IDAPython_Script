@@ -1,15 +1,17 @@
 # region -------------------------------------- IMPORTS --------------------------------------
 import binascii
-import os
-import sys
 import time
-import SignalHandler
-import signal
-from threading import Timer
+import idaapi
+import idautils
+import idc
+from SignalHandler import getTimerFromTimeout
+
 # endregion
 
 # region --------------------------------------  GLOBAL --------------------------------------
-sys.setrecursionlimit(5000)
+BADADDR = idaapi.BADADDR
+MAX_EA = idaapi.cvar.inf.maxEA
+
 ASM_ARITHMETIC_LOGIC_INSTRUCTIONS = ["aaa", "aad", "aas", "adc", "add", "addpd", "addps", "addsd", "addss", "addsubpd",
                                      "addsubps", "and", "andpd", "andps", "andnpd", "andnps", "bsf", "bsr", "bswap",
                                      "bt", "btc", "btr", "bts", "daa", "das", "dec", "div", "divpd", "divps", "divsd",
@@ -30,14 +32,6 @@ ASM_ARITHMETIC_LOGIC_INSTRUCTIONS = ["aaa", "aad", "aas", "adc", "add", "addpd",
                                      "subpd", "subps", "subsd", "subss", "xadd", "xchg", "xor", "xorpd", "xorps"]
 
 
-# ASM_ARITHMETIC_INSTRUCTIONS = ["add", "sub", "inc", "dec", "mul", "div", "adc", "xadd", "sdb", "imul", "idiv", "neg"]
-# ASM_LOGIC_INSTRUCTIONS = ["and", "or", "xor", "not"]
-# ASM_SHIFT_INSTRUCTIONS = ["shl", "shr", "shld", "shrd", "sal", "sar"]
-# ASM_JMP_INSTRUCTIONS = ["JMP", "JA", "JNBE", "JAE", "JB", "JNAE", "JBE", "JNA", "JE", "JZ", "JNE", "JNZ", "JG", "JNLE",
-#                         "JGE", "JNL", "JL", "JNGE", "JLE", "JNG", "JC", "JNC", "JNO", "JNP", "JPO", "JNS", "JO", "JP",
-#                         "JPE", "JS", "LOOP", ]
-
-
 # endregion
 
 # region -------------------------------------- CLASSES --------------------------------------
@@ -56,7 +50,7 @@ class Function:
 
     def disassembleFunction(self):
         res = []
-        for head in Heads(self.start, self.end):
+        for head in idautils.Heads(self.start, self.end):
             res.append(Disassembled(head))
         return res
 
@@ -64,31 +58,28 @@ class Function:
 class Disassembled:
     def __init__(self, position):
         self.position = position
-        self.instruction = GetDisasm(position)
+        self.instruction = Disasm(position)
 
     def __str__(self):
         return transformPosition(self.position) + " : " + self.instruction
 
-    def OpCode(self):
-        return GetManyBytes(self.position, ItemSize(self.position))
-
     def Instruction(self):
-        return GetMnem(self.position)
+        return Instruction(self.position)
 
     def Operand(self, i):
-        return GetOpnd(self.position, i)
+        return Operand(self.position, i)
 
     def OperandValue(self, i):
-        return GetOperandValue(self.position, i)
+        return OperandValue(self.position, i)
 
     def OperandType(self, i):
-        return GetOpType(self.position, i)
+        return OperandType(self.position, i)
 
 
 class LoopFunction:
-    def __init__(self, function_, loopInstructions):
+    def __init__(self, function_, loop_instructions):
         self.function = function_
-        self.loopInstructions = loopInstructions
+        self.loopInstructions = loop_instructions
 
     def __str__(self):
         res = "Function: " + self.function.name + "(" + transformPosition(
@@ -124,43 +115,84 @@ class LoopFunction:
 
 # endregion
 
+# region -------------------------------------- Wrapper --------------------------------------
+"""
+type of the i^th operand:
+    o_void  =      0  # No Operand               
+    o_reg  =       1  # General Register (al,ax,es,ds...)    reg
+    o_mem  =       2  # Direct Memory Reference  (DATA)      addr
+    o_phrase  =    3  # Memory Ref [Base Reg + Index Reg]    phrase
+    o_displ  =     4  # Memory Reg [Base Reg + Index Reg + Displacement] phrase+addr
+    o_imm  =       5  # Immediate Value                      value
+    o_far  =       6  # Immediate Far Address  (CODE)        addr
+    o_near  =      7  # Immediate Near Address (CODE)        addr
+"""
+
+
+def OperandType(ea, i):
+    return idc.GetOpType(ea, i)
+
+
+# value of the i^th operand:
+def OperandValue(ea, i):
+    return idc.GetOperandValue(ea, i)
+
+
+# the i^th operand, as string
+def Operand(ea, i):
+    return idc.GetOpnd(ea, i)
+
+
+# just the mnemonics of the instruction, without the conditional suffix and other stuff
+def Instruction(ea):
+    return idc.GetMnem(ea)
+
+
+# just the mnemonics of the instruction, without the conditional suffix and other stuff
+def NextHead(ea, limit):
+    return idc.NextHead(ea, limit)
+
+
+# a string containing the human-readable ASM line
+def Disasm(ea):
+    return idc.GetDisasm(ea)
+
+
+# endregion
+
 # region -------------------------------------- CODE --------------------------------------
 def getListOfFunctions():
     res = []
-    for segea in Segments():
-        for funcea in Functions(segea, SegEnd(segea)):
-            functionName = GetFunctionName(funcea)
-            for (startea, endea) in Chunks(funcea):
+    for segea in idautils.Segments():
+        for funcea in idautils.Functions(segea, idc.SegEnd(segea)):
+            functionName = idc.GetFunctionName(funcea)
+            for (startea, endea) in idautils.Chunks(funcea):
                 res.append(Function(functionName, startea, endea))
     return res
 
 
-def checkJmpDestination(function, jmpInstruction):
-    if jmpInstruction.OperandValue(0) >= jmpInstruction.position:
+def checkJmpDestination(function_, jmp_instruction):
+    if jmp_instruction.OperandValue(0) >= jmp_instruction.position:
         return False
     else:
-        return isJmpInTheFunction(function, jmpInstruction.OperandValue(0))
-        # for instruction in instructions:
-        #     if instruction.position == jmpInstruction.OperandValue(0):
-        #         return True
-        # return False
+        return isJmpInTheFunction(function_, jmp_instruction.OperandValue(0))
     pass
 
 
 def getListOfPossibleLoops(functions):
     loopFunctions = []
-    for function in functions:
+    for function_ in functions:
         loopInstructions = []
-        for instruction in function.disassembled:
+        for instruction in function_.disassembled:
             mnemonicName = instruction.Instruction()
-            if mnemonicName.startswith("j") and checkJmpDestination(function, instruction):
+            if mnemonicName.startswith("j") and checkJmpDestination(function_, instruction):
                 loopInstructions.append(LoopFunction.LoopInstruction(instruction))
             elif "loop" in mnemonicName:
                 loopInstructions.append(LoopFunction.LoopInstruction(instruction, True))
-            elif "call" in mnemonicName and function.name == instruction.Operand(0):
+            elif "call" in mnemonicName and function_.name == instruction.Operand(0):
                 loopInstructions.append(LoopFunction.LoopInstruction(instruction, True))
         if len(loopInstructions) != 0:
-            loopFunctions.append(LoopFunction(function, loopInstructions))
+            loopFunctions.append(LoopFunction(function_, loopInstructions))
     return loopFunctions
 
 
@@ -168,84 +200,83 @@ def getSetOfLoops(start, end, stack=set()):
     res = set()
     ea = start
     stack2 = cpSet(stack, ea)
-    while ea != idaapi.BADADDR:
-        if ea == end or GetMnem(ea).startswith("ret"):
+    while ea != BADADDR:
+        if ea == end or Instruction(ea).startswith("ret"):
             break
-        elif GetMnem(ea).startswith("j"):
-            jumpDst = GetOperandValue(ea, 0)
+        elif Instruction(ea).startswith("j"):
+            jumpDst = OperandValue(ea, 0)
             if jumpDst in stack2:
-                # if GetOperandValue(ea, 0) == start:
                 res.add(str(jumpDst) + "," + str(ea))
                 break
             else:
                 res.update(getSetOfLoops(jumpDst, end, stack2))
-                if GetMnem(ea) == "jmp":
+                if Instruction(ea) == "jmp":
                     return res
-        ea = NextHead(ea, idaapi.cvar.inf.maxEA)
+        ea = NextHead(ea, MAX_EA)
         stack2.add(ea)
     return res
 
 
-def checkLoop(start, end, endOfFunction, stack=set()):
+def checkLoop(start, end, end_of_function, stack=set()):
     ea = start
     stack2 = cpSet(stack, start)
-    while ea != idaapi.BADADDR:
-        mnem = GetMnem(ea)
+    while ea != BADADDR:
+        mnem = Instruction(ea)
         if ea == end:
             return True
-        elif mnem.startswith("ret") or ea == endOfFunction:
+        elif mnem.startswith("ret") or ea == end_of_function:
             return False
         elif mnem.startswith("j"):
-            jumpDst = GetOperandValue(ea, 0)
+            jumpDst = OperandValue(ea, 0)
             if jumpDst in stack2:
                 return False
             elif mnem == "jmp":
-                return checkLoop(jumpDst, end, endOfFunction, stack2)
+                return checkLoop(jumpDst, end, end_of_function, stack2)
             else:
-                if checkLoop(jumpDst, end, endOfFunction, stack2):
+                if checkLoop(jumpDst, end, end_of_function, stack2):
                     return True
-        ea = NextHead(ea, idaapi.cvar.inf.maxEA)
+        ea = NextHead(ea, MAX_EA)
         stack2.add(ea)
     return False
 
 
-def verifyLoops(possibleLoopFunctions):
-    for possibleLoopFunction in possibleLoopFunctions:
+def verifyLoops(possible_loop_functions):
+    for possibleLoopFunction in possible_loop_functions:
         for loopInstruction in possibleLoopFunction.loopInstructions:
             if checkLoop(loopInstruction.loopStart(), loopInstruction.loopEnd(), possibleLoopFunction.function.end):
                 loopInstruction.verify()
-    return possibleLoopFunctions
+    return possible_loop_functions
 
 
 # endregion
 
 # region -------------------------------------- UTILS --------------------------------------
-def isJmpInTheFunction(function, jumpDst):
-    return function.start <= jumpDst <= function.end
+def isJmpInTheFunction(function_, jump_dst):
+    return function_.start <= jump_dst <= function_.end
 
 
-def cpSet(list, item_=None):
+def cpSet(list_, item_=None):
     res = set()
-    res.update(list)
+    res.update(list_)
     if item_:
         res.add(item_)
     return res
 
 
-def cloneArray(list, item_=None):
+def cloneArray(list_, item_=None):
     res = []
-    res.extend(list)
+    res.extend(list_)
     if item_:
         res.append(item_)
     return res
 
 
 def transformPosition(position):
-    return "0x%08x" % (position)
+    return "0x%08x" % position
 
 
-def bytesToHex(bytes):
-    return binascii.hexlify(bytearray(bytes))
+def bytesToHex(bytes_):
+    return binascii.hexlify(bytearray(bytes_))
 
 
 def printLoops(loops):
@@ -263,8 +294,8 @@ def printLoops(loops):
     print "Verified loops: " + str(verified)
 
 
-def printVerifiedLoops(functionLoops):
-    for functionLoop in functionLoops:
+def printVerifiedLoops(function_loops):
+    for functionLoop in function_loops:
         res = None
         if functionLoop.isVerified():
             res = "Function: " + functionLoop.function.name + "(" + transformPosition(
@@ -277,18 +308,18 @@ def printVerifiedLoops(functionLoops):
             print res + "\n"
 
 
-def printFunction(functionName, functions):
-    for function in functions:
-        if functionName == function.name:
-            print function.name, transformPosition(function.start), transformPosition(function.end)
-            for asm in function.disassembled:
+def printFunction(function_name, functions):
+    for function_ in functions:
+        if function_name == function_.name:
+            print function_.name, transformPosition(function_.start), transformPosition(function_.end)
+            for asm in function_.disassembled:
                 print transformPosition(asm.position), ": ", asm.instruction, "#", asm.Instruction(), asm.Operand(
                     0), asm.OperandType(0), asm.OperandValue(0), bytesToHex(asm.OpCode())
 
 
-def contains(list, filter):
-    for item in list:
-        if filter(item):
+def contains(list_, filter_):
+    for item in list_:
+        if filter_(item):
             return item
     return None
 
@@ -387,12 +418,13 @@ def TimeStamp():
 
 def main():
     loopFunctions = getListOfPossibleLoops(getListOfFunctions())
+
     for loopFunction in loopFunctions:
         # if "encry" not in loopFunction.function.name:
         #     continue
         # print loopFunction.function.name
         for loop in loopFunction.loopInstructions:
-            ways = getAllTheWaysOfLoopWithTimeout(loop, loopFunction, timeout=5)
+            ways = getAllTheWaysOfLoopWithTimeout(loop, loopFunction, timeout=2)
             if ways or (loop.verified and ways):
                 buffer_op, call_op, total, xor_op = analyzeLoopsInstructions(ways)
 
@@ -402,7 +434,7 @@ def main():
                     break
 
 
-def formaThetResultOfTheAnalysis(buffer_op, call_op, loopFunction, total, ways, xor_op):
+def formaThetResultOfTheAnalysis(buffer_op, call_op, loop_function, total, ways, xor_op):
     result = ""
     if buffer_op != -1:
         if xor_op != -1:
@@ -413,29 +445,29 @@ def formaThetResultOfTheAnalysis(buffer_op, call_op, loopFunction, total, ways, 
             result += "\tArithmeticological --> \tAverage: " + str(sum(total)) + " / " + str(len(ways)) + " = " + str(
                 float(sum(total)) / len(ways)) + " Max: " + str(max(total)) + "\n"
         if len(result) != 0:
-            result = "Possible Cipher Function: " + loopFunction.function.name + " (" + transformPosition(
-                loopFunction.function.start) + ", " + transformPosition(loopFunction.function.end) + ")\n" + result
+            result = "Possible Cipher Function: " + loop_function.function.name + " (" + transformPosition(
+                loop_function.function.start) + ", " + transformPosition(loop_function.function.end) + ")\n" + result
     return result
 
 
-def getAllTheWaysOfLoopWithTimeout(loop, loopFunction, timeout= 10):
-    def timeoutHandler(signum, frame):
-        raise ValueError("Timeout")
-
+def getAllTheWaysOfLoopWithTimeout(loop, loop_function, timeout=10):
     ways = None
-    signal.signal(signal.SIGINT, timeoutHandler)
-    timer = Timer(timeout, SignalHandler.kill, args=(os.getpid(), signal.SIGINT))
+    timer = getTimerFromTimeout(timeout)
     timer.start()
     try:
-        ways = getAllWaysOfTheLoop(loop.loopStart(), loop.loopEnd(), loopFunction.function.end)
+        ways = getAllWaysOfTheLoop(loop.loopStart(), loop.loopEnd(), loop_function.function.end)
         timer.cancel()
     except RuntimeError:
-        print "Timeout getting all execute instructions of the next loop:", transformPosition(loop.loopStart()), transformPosition(loop.loopEnd())
+        print "Timeout getting all execute instructions of the next loop:", transformPosition(
+            loop.loopStart()), transformPosition(loop.loopEnd())
     return ways
 
 
 def analyzeLoopsInstructions(ways):
     total = []
+    buffer_op = -1
+    xor_op = -1
+    call_op = -1
     for way in ways:
         arith_log_ins = 0.0
         buffer_op = -1
@@ -444,17 +476,17 @@ def analyzeLoopsInstructions(ways):
         bonus = 1
         no_arith_log_ins = len(way)
         for ea in way:
-            if GetMnem(ea) in ASM_ARITHMETIC_LOGIC_INSTRUCTIONS:
+            if Instruction(ea) in ASM_ARITHMETIC_LOGIC_INSTRUCTIONS:
                 arith_log_ins += 1 * bonus
                 bonus += 1
                 no_arith_log_ins -= 1
             else:
                 bonus = (bonus - 1, 1)[bonus == 0]
-            if buffer_op == -1 and bufferInc(ea, GetMnem(ea)):
+            if buffer_op == -1 and bufferInc(ea, Instruction(ea)):
                 buffer_op = ea
-            elif buffer_op == -1 and possibleCipherXOR(ea, GetMnem(ea)):
+            elif buffer_op == -1 and possibleCipherXOR(ea, Instruction(ea)):
                 xor_op = ea
-            elif call_op == -1 and GetMnem(ea) == "call":
+            elif call_op == -1 and Instruction(ea) == "call":
                 call_op = ea
 
         total.append(arith_log_ins / float(no_arith_log_ins))
@@ -464,135 +496,93 @@ def analyzeLoopsInstructions(ways):
 def print_ways(ways):
     for way in ways:
         print "Way:"
-        for x in way: print transformPosition(x)
+        for x in way:
+            print transformPosition(x)
 
 
 # NOT xor R1, R1 / XOR Value, Value
 def possibleCipherXOR(ea, mnem):
-    return mnem == "xor" and GetOpnd(ea, 0) != GetOpnd(ea, 1) and GetOpType(ea, 0) != 5 and GetOpType(ea, 1) != 5
+    return mnem == "xor" and Operand(ea, 0) != Operand(ea, 1) and OperandType(ea, 0) != 5 and OperandType(
+        ea, 1) != 5
 
 
 # inc REG mnem == "inc" or / add [addr], 1
 def bufferInc(ea, mnem):
-    return mnem == "inc" or mnem == "add" and GetOpType(ea, 1) == 5 and GetOperandValue(ea, 1) == 1
+    return mnem == "inc" or mnem == "add" and OperandType(ea, 1) == 5 and OperandValue(ea, 1) == 1
 
 
-def getAllWaysOfTheLoop(startOfLoop, endOfLoop, endOfFunction, stack=[]):
-    ea = startOfLoop
+def getAllWaysOfTheLoop(start_of_loop, end_of_loop, end_of_function, stack=None):
+    if stack is None:
+        stack = []
+    ea = start_of_loop
     ways = []
     stack = cloneArray(stack)
-    while ea != idaapi.BADADDR:
+    while ea != BADADDR:
         stack.append(ea)
-        mnem = GetMnem(ea)
-        if ea == endOfLoop:
+        mnem = Instruction(ea)
+        if ea == end_of_loop:
             ways.append(cloneArray(stack))
             return cloneArray(ways)
-        elif mnem.startswith("ret") or ea == endOfFunction:
+        elif mnem.startswith("ret") or ea == end_of_function:
             break
         elif mnem.startswith("j"):
-            jumpDst = GetOperandValue(ea, 0)
+            jumpDst = OperandValue(ea, 0)
             if mnem == "jmp":
                 if jumpDst not in stack:
-                    ways2 = getAllWaysOfTheLoop(jumpDst, endOfLoop, endOfFunction, cloneArray(stack))
+                    ways2 = getAllWaysOfTheLoop(jumpDst, end_of_loop, end_of_function, cloneArray(stack))
                     if ways2:
                         ways.extend(ways2)
                         return cloneArray(ways)
                 break
             else:
                 if jumpDst not in stack:
-                    ways2 = getAllWaysOfTheLoop(jumpDst, endOfLoop, endOfFunction, cloneArray(stack))
+                    ways2 = getAllWaysOfTheLoop(jumpDst, end_of_loop, end_of_function, cloneArray(stack))
                     if ways2:
                         ways.extend(ways2)
-        ea = NextHead(ea, idaapi.cvar.inf.maxEA)
+        ea = NextHead(ea, MAX_EA)
 
     if len(ways) != 0:
         return cloneArray(ways)
     return None
 
 
-def getLoopInstructions(startOfLoop, endOfLoop, endOfFunction, stack=set()):
-    if maxdepth == 0:
-        return set()
-    ea = startOfLoop
+def getLoopInstructions(start_of_loop, end_of_loop, end_of_function, stack=set()):
+    ea = start_of_loop
     stack2 = cpSet(stack, ea)
     res = set()
-    while ea != idaapi.BADADDR:
-        mnem = GetMnem(ea)
-        if ea == endOfLoop:
+    while ea != BADADDR:
+        mnem = Instruction(ea)
+        if ea == end_of_loop:
             if len(res) != 0:
                 stack2.update(res)
             return stack2
-        elif mnem.startswith("ret") or ea == endOfFunction:
+        elif mnem.startswith("ret") or ea == end_of_function:
             return res
         elif mnem.startswith("j"):
-            jumpDst = GetOperandValue(ea, 0)
+            jumpDst = OperandValue(ea, 0)
             if mnem == "jmp":
                 if jumpDst in stack2:
                     return res
-                res2 = getLoopInstructions(jumpDst, endOfLoop, endOfFunction, stack2)
+                res2 = getLoopInstructions(jumpDst, end_of_loop, end_of_function, stack2)
                 if len(res2) != 0:
                     res.update(res2)
                     res.update(stack2)
                 return res
             else:
                 if jumpDst not in stack2:
-                    res2 = getLoopInstructions(jumpDst, endOfLoop, endOfFunction, stack2)
+                    res2 = getLoopInstructions(jumpDst, end_of_loop, end_of_function, stack2)
                     if len(res2) != 0:
                         res.update(res2)
                         res.update(stack2)
-        ea = NextHead(ea, idaapi.cvar.inf.maxEA)
+        ea = NextHead(ea, MAX_EA)
         stack2.add(ea)
     if len(res) != 0:
         stack2.update(res)
         return stack2
     return set()
-    # print "Stack:", sorted([transformPosition(x) for x in stack2]), "Res:", sorted([transformPosition(x) for x in res]), "Len:", len(res)
 
 
 if __name__ == "__main__":
-    print "-------INICIO-------"
     main()
-    print "-------FIN-------"
-
 
 # endregion
-# def checkLoop(start, end, stack=[]):
-#     ea = start
-#     while ea != idaapi.BADADDR:
-#         if ea == end:
-#             return True
-#         elif GetMnem(ea).startswith("j"):
-#             jumpDst = GetOperandValue(ea, 0)
-#             if ea in stack:
-#                 return False
-#             elif GetMnem(ea) == "jmp":
-#                 return checkLoop(jumpDst, end, cpArray(stack, ea))
-#             else:
-#                 if checkLoop(jumpDst, end, cpArray(stack, ea)):
-#                     return True
-#         elif GetMnem(ea) == "retn":
-#             return False
-#         ea = NextHead(ea, idaapi.cvar.inf.maxEA)
-#     return False
-
-
-# def getSetOfLoops(start, end, stack=[]):
-#     res = set()
-#     ea = start
-#     while ea != idaapi.BADADDR:
-#         if ea == end:
-#             break
-#         elif GetMnem(ea).startswith("j"):
-#             jumpDst = GetOperandValue(ea, 0)
-#             if ea in stack:
-#                 if GetOperandValue(ea, 0) == start:
-#                     res.add(str(start) + "," + str(ea))
-#                 break
-#             else:
-#                 res.update(getSetOfLoops(jumpDst, end, cpArray(stack, ea)))
-#                 if GetMnem(ea) == "jmp":
-#                     return res
-#         elif GetMnem(ea).startswith("ret"):
-#             break
-#         ea = NextHead(ea, idaapi.cvar.inf.maxEA)
-#     return res

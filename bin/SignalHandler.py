@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import signal
+from threading import Timer
 
 if sys.platform != 'win32':
     kill = os.kill
@@ -55,7 +56,7 @@ else:
     # Python 3 just resumes the sleep.
 
     def sleep(interval):
-        '''sleep that ignores EINTR in 2.x on Windows'''
+        """sleep that ignores EINTR in 2.x on Windows"""
         while True:
             try:
                 t = time.time()
@@ -66,3 +67,11 @@ else:
             interval -= time.time() - t
             if interval <= 0:
                 break
+
+
+def timeoutHandler(signum, frame):
+    raise ValueError("Timeout")
+
+
+def getTimerFromTimeout(timeout):
+    return Timer(timeout, kill, args=(os.getpid(), signal.SIGINT))
